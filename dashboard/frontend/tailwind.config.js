@@ -17,37 +17,38 @@ export default {
     },
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // Supabase Studio inspired dark theme
+        border: "#333333",
+        input: "#2a2a2a",
+        ring: "#3ecf8e",
+        background: "#1a1a1a",
+        foreground: "#e5e5e5",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--foreground))",
+          DEFAULT: "#3ecf8e",
+          foreground: "#ffffff",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "#242424",
+          foreground: "#e5e5e5",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: "#ef4444",
+          foreground: "#ffffff",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "#2a2a2a",
+          foreground: "#a3a3a3",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "#2a2a2a",
+          foreground: "#e5e5e5",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "#242424",
+          foreground: "#e5e5e5",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
+          DEFAULT: "#1f1f1f",
           foreground: "hsl(var(--card-foreground))",
         },
       },

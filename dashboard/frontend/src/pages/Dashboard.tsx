@@ -47,7 +47,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
+      <header className="border-b border-border bg-card">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
@@ -60,19 +60,19 @@ export default function Dashboard() {
               {/* Alert Badge */}
               <Link
                 to="/alerts"
-                className="relative flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                className="relative flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors"
               >
                 <Bell className="w-4 h-4" />
                 Alerts
                 {alertStats && alertStats.active > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
+                  <span className="absolute -top-2 -right-2 bg-destructive text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center">
                     {alertStats.active}
                   </span>
                 )}
               </Link>
 
               <button
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary/90 transition-colors"
                 onClick={() => setIsCreateModalOpen(true)}
               >
                 <Plus className="w-4 h-4" />
@@ -82,26 +82,26 @@ export default function Dashboard() {
               {/* User Menu */}
               <div className="relative">
                 <button
-                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors"
                   onClick={() => setShowUserMenu(!showUserMenu)}
                 >
-                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold">
+                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-semibold">
                     {user?.username?.charAt(0).toUpperCase() || 'U'}
                   </div>
-                  <span className="text-sm">{user?.username}</span>
+                  <span className="text-sm text-foreground">{user?.username}</span>
                 </button>
 
                 {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-card border rounded-md shadow-lg z-50">
-                    <div className="p-3 border-b">
-                      <p className="text-sm font-medium">{user?.username}</p>
+                  <div className="absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg z-50">
+                    <div className="p-3 border-b border-border">
+                      <p className="text-sm font-medium text-foreground">{user?.username}</p>
                       <p className="text-xs text-muted-foreground">{user?.email}</p>
                       <p className="text-xs text-primary mt-1 capitalize">{user?.role}</p>
                     </div>
                     <div className="py-1">
                       <Link
                         to="/backups"
-                        className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted"
                         onClick={() => setShowUserMenu(false)}
                       >
                         <Database className="w-4 h-4" />
@@ -110,7 +110,7 @@ export default function Dashboard() {
                       {user?.role === 'admin' && (
                         <Link
                           to="/users"
-                          className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                          className="flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted"
                           onClick={() => setShowUserMenu(false)}
                         >
                           <Users className="w-4 h-4" />
@@ -118,13 +118,13 @@ export default function Dashboard() {
                         </Link>
                       )}
                     </div>
-                    <div className="border-t py-1">
+                    <div className="border-t border-border py-1">
                       <button
                         onClick={() => {
                           logout();
                           setShowUserMenu(false);
                         }}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-destructive hover:bg-muted w-full text-left"
                       >
                         <LogOut className="w-4 h-4" />
                         Logout
@@ -142,13 +142,13 @@ export default function Dashboard() {
       <main className="container mx-auto px-6 py-8">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-card border rounded-lg p-6">
+          <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Instances</p>
-                <p className="text-3xl font-bold mt-1">{instances?.length || 0}</p>
+                <p className="text-3xl font-bold mt-1 text-foreground">{instances?.length || 0}</p>
               </div>
-              <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
                 <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
@@ -156,27 +156,27 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="bg-card border rounded-lg p-6">
+          <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Healthy</p>
-                <p className="text-3xl font-bold mt-1 text-green-600">
+                <p className="text-3xl font-bold mt-1 text-primary">
                   {instances?.filter(i => i.health.overall === 'healthy').length || 0}
                 </p>
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center">
+                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
             </div>
           </div>
 
-          <div className="bg-card border rounded-lg p-6">
+          <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Services</p>
-                <p className="text-3xl font-bold mt-1">
+                <p className="text-3xl font-bold mt-1 text-foreground">
                   {instances?.reduce((sum, i) => sum + i.services.length, 0) || 0}
                 </p>
               </div>
