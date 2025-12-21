@@ -75,3 +75,50 @@ model SystemMetric {
 
   @@index([timestamp])
 }
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  username      String   @unique
+  passwordHash  String
+  role          String   @default("user") // 'admin', 'user', 'viewer'
+  isActive      Boolean  @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  sessions      Session[]
+  backups       Backup[]
+
+  @@index([email])
+  @@index([role])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+}
+
+model Backup {
+  id          String   @id @default(uuid())
+  name        String
+  type        String   // 'full', 'instance', 'database'
+  instanceId  String?  // null for full backups
+  size        Int      // Size in bytes
+  path        String   // File path
+  createdBy   String
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [createdBy], references: [id])
+
+  @@index([type])
+  @@index([instanceId])
+  @@index([createdAt])
+}

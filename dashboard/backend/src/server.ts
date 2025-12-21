@@ -20,9 +20,12 @@ import { createMetricsRoutes } from './routes/metrics';
 import { createHealthRoutes } from './routes/health';
 import { createLogsRoutes } from './routes/logs';
 import { createAlertRoutes } from './routes/alerts';
+import { createAuthRoutes } from './routes/auth';
+import { createBackupRoutes } from './routes/backups';
 
 // Utils
 import { logger } from './utils/logger';
+import AuthService from './services/AuthService';
 
 // Load environment variables
 dotenv.config();
@@ -90,6 +93,8 @@ app.use('/api/metrics', createMetricsRoutes(metricsCollector, redisCache));
 app.use('/api/health', createHealthRoutes(healthMonitor));
 app.use('/api/logs', createLogsRoutes(dockerManager));
 app.use('/api/alerts', createAlertRoutes());
+app.use('/api/auth', createAuthRoutes());
+app.use('/api/backups', createBackupRoutes());
 
 // Health check endpoint for the dashboard itself
 app.get('/api/ping', async (req, res) => {
@@ -257,8 +262,12 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  logger.error('Unhandled Rejection at:', {
+    promise: promise.toString(),
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
 });
 
 process.on('uncaughtException', (error) => {
@@ -269,6 +278,9 @@ process.on('uncaughtException', (error) => {
 // Start server
 async function start() {
   try {
+    // Create initial admin user if needed
+    await AuthService.createInitialAdmin();
+    
     await startServices();
 
     httpServer.listen(PORT, () => {

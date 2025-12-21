@@ -2,16 +2,19 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useInstances, useSystemMetrics } from '../hooks/useInstances';
 import { useAlertStats } from '../hooks/useAlerts';
+import { useAuth } from '../contexts/AuthContext';
 import InstanceCard from '../components/InstanceCard';
 import CreateInstanceModal from '../components/CreateInstanceModal';
 import GaugeChart from '../components/charts/GaugeChart';
-import { Loader2, Plus, AlertCircle, Bell, Activity, TrendingUp } from 'lucide-react';
+import { Loader2, Plus, AlertCircle, Bell, Activity, TrendingUp, LogOut, Users, Database, Settings } from 'lucide-react';
 
 export default function Dashboard() {
   const { data: instances, isLoading, error, refetch } = useInstances();
   const { data: alertStats } = useAlertStats();
   const { data: systemMetrics } = useSystemMetrics();
+  const { user, logout } = useAuth();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   if (isLoading) {
     return (
@@ -75,6 +78,61 @@ export default function Dashboard() {
                 <Plus className="w-4 h-4" />
                 Create Instance
               </button>
+
+              {/* User Menu */}
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                >
+                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center text-primary-foreground font-semibold">
+                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <span className="text-sm">{user?.username}</span>
+                </button>
+
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-56 bg-card border rounded-md shadow-lg z-50">
+                    <div className="p-3 border-b">
+                      <p className="text-sm font-medium">{user?.username}</p>
+                      <p className="text-xs text-muted-foreground">{user?.email}</p>
+                      <p className="text-xs text-primary mt-1 capitalize">{user?.role}</p>
+                    </div>
+                    <div className="py-1">
+                      <Link
+                        to="/backups"
+                        className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        <Database className="w-4 h-4" />
+                        Backups
+                      </Link>
+                      {user?.role === 'admin' && (
+                        <Link
+                          to="/users"
+                          className="flex items-center gap-2 px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                          onClick={() => setShowUserMenu(false)}
+                        >
+                          <Users className="w-4 h-4" />
+                          User Management
+                        </Link>
+                      )}
+                    </div>
+                    <div className="border-t py-1">
+                      <button
+                        onClick={() => {
+                          logout();
+                          setShowUserMenu(false);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700 w-full text-left"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

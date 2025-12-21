@@ -14,6 +14,20 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src')
     }
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'query-vendor': ['@tanstack/react-query'],
+          'charts-vendor': ['recharts'],
+          'ui-vendor': ['lucide-react', 'sonner', 'date-fns'],
+          'socket-vendor': ['socket.io-client'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 600,
+  },
   server: {
     host: '0.0.0.0',
     port: FRONTEND_PORT,

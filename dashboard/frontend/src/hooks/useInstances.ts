@@ -13,8 +13,7 @@ export const instanceKeys = {
   detail: (name: string) => [...instanceKeys.details(), name] as const,
   health: (name: string) => [...instanceKeys.all, 'health', name] as const,
   metrics: (name: string) => [...instanceKeys.all, 'metrics', name] as const,
-  logs: (name: string, service?: string) =>
-    [...instanceKeys.all, 'logs', name, service] as const,
+  logs: (name: string, service?: string) => [...instanceKeys.all, 'logs', name, service] as const,
 };
 
 // List all instances
@@ -71,11 +70,11 @@ export const useInstanceMetricsHistory = (
     return ranges[range] || ranges['1h'];
   };
 
-  const since = new Date(Date.now() - getTimeRangeInMs(timeRange)).toISOString();
+  const hours = getTimeRangeInMs(timeRange) / (60 * 60 * 1000);
 
   return useQuery({
     queryKey: [...instanceKeys.metrics(name), 'history', timeRange],
-    queryFn: () => metricsApi.getHistory(name, since, 500),
+    queryFn: () => metricsApi.getHistory(name, { hours }),
     enabled: !!name,
     refetchInterval: 30000, // Refetch every 30 seconds
     staleTime: 20000, // Consider data stale after 20 seconds
@@ -87,9 +86,7 @@ export const useInstanceLogs = (name: string, service?: string, tail = 100) => {
   return useQuery({
     queryKey: instanceKeys.logs(name, service),
     queryFn: () =>
-      service
-        ? logsApi.getService(name, service, tail)
-        : logsApi.getInstance(name, tail),
+      service ? logsApi.getService(name, service, tail) : logsApi.getInstance(name, tail),
     enabled: !!name,
     refetchInterval: 5000,
   });
