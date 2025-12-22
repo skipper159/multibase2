@@ -33,7 +33,7 @@ dotenv.config();
 const PORT = process.env.PORT || 3001;
 // Parse CORS origins - supports comma-separated list for multiple origins
 const CORS_ORIGIN = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
   : ['http://localhost:5173'];
 const PROJECTS_PATH = process.env.PROJECTS_PATH || path.join(__dirname, '../../projects');
 const DOCKER_SOCKET_PATH = process.env.DOCKER_SOCKET_PATH;
@@ -48,12 +48,12 @@ const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: CORS_ORIGIN,
-    methods: ['GET', 'POST']
+    methods: ['GET', 'POST'],
   },
   transports: ['websocket', 'polling'],
   // Trust proxy headers when behind nginx reverse proxy
   // Allows Socket.io to detect real client IP and protocol from X-Forwarded-* headers
-  path: '/socket.io/'
+  path: '/socket.io/',
 });
 
 // Middleware
@@ -106,15 +106,15 @@ app.get('/api/ping', async (req, res) => {
       status: 'ok',
       services: {
         docker: dockerOk,
-        redis: redisOk
+        redis: redisOk,
       },
-      timestamp: new Date()
+      timestamp: new Date(),
     });
   } catch (error) {
     logger.error('Health check failed:', error);
     res.status(500).json({
       status: 'error',
-      error: 'Health check failed'
+      error: 'Health check failed',
     });
   }
 });
@@ -124,7 +124,7 @@ app.get('/', (req, res) => {
   res.json({
     name: 'Multibase Dashboard API',
     version: '1.0.0',
-    status: 'running'
+    status: 'running',
   });
 });
 
@@ -149,7 +149,7 @@ io.on('connection', (socket) => {
       logger.info(`Client ${socket.id} subscribed to logs: ${instanceName}:${serviceName}`);
 
       const containers = await dockerManager.listProjectContainers(instanceName);
-      const container = containers.find(c => {
+      const container = containers.find((c) => {
         const containerName = c.Names[0].replace('/', '');
         return containerName.includes(serviceName);
       });
@@ -159,7 +159,7 @@ io.on('connection', (socket) => {
           socket.emit('logs:data', {
             instanceName,
             serviceName,
-            data: chunk
+            data: chunk,
           });
         });
       }
@@ -266,7 +266,7 @@ process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
   logger.error('Unhandled Rejection at:', {
     promise: promise.toString(),
     reason: reason instanceof Error ? reason.message : String(reason),
-    stack: reason instanceof Error ? reason.stack : undefined
+    stack: reason instanceof Error ? reason.stack : undefined,
   });
 });
 
@@ -280,7 +280,7 @@ async function start() {
   try {
     // Create initial admin user if needed
     await AuthService.createInitialAdmin();
-    
+
     await startServices();
 
     httpServer.listen(PORT, () => {

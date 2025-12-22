@@ -11,8 +11,8 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+      '@': path.resolve(__dirname, './src'),
+    },
   },
   build: {
     rollupOptions: {
@@ -43,12 +43,12 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: BACKEND_URL,
-        changeOrigin: true
+        changeOrigin: true,
       },
       '/socket.io': {
         target: BACKEND_URL,
-        ws: true
-      }
-    }
-  }
+        ws: true,
+      },
+    },
+  },
 });

@@ -108,7 +108,7 @@ server {
     # SSL certificates (use Let's Encrypt)
     ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
-    
+
     # SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
@@ -124,7 +124,7 @@ server {
     location / {
         root /opt/multibase/dashboard/frontend/dist;
         try_files $uri $uri/ /index.html;
-        
+
         # Cache static assets
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             expires 1y;
@@ -143,7 +143,7 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
-        
+
         # Increase timeouts for long-running operations
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
@@ -160,7 +160,7 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
+
         # WebSocket timeout
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
@@ -415,6 +415,7 @@ docker exec multibase-redis redis-cli CONFIG SET maxmemory-policy allkeys-lru
 ## Support
 
 For issues:
+
 - Check logs: `journalctl -u multibase-dashboard-backend`
 - Verify services: `systemctl status multibase-dashboard-backend`
 - Check Docker: `docker ps -a`

@@ -27,12 +27,12 @@ function AppContent() {
   useWebSocket();
 
   return (
-    <div className="min-h-screen bg-background">
-      <Toaster position="top-right" richColors />
+    <div className='min-h-screen bg-background'>
+      <Toaster position='top-right' richColors />
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path='/login' element={<Login />} />
         <Route
-          path="/"
+          path='/'
           element={
             <ProtectedRoute>
               <Dashboard />
@@ -40,7 +40,7 @@ function AppContent() {
           }
         />
         <Route
-          path="/instances/:name"
+          path='/instances/:name'
           element={
             <ProtectedRoute>
               <InstanceDetail />
@@ -48,7 +48,7 @@ function AppContent() {
           }
         />
         <Route
-          path="/alerts"
+          path='/alerts'
           element={
             <ProtectedRoute>
               <Alerts />
@@ -56,7 +56,7 @@ function AppContent() {
           }
         />
         <Route
-          path="/alert-rules"
+          path='/alert-rules'
           element={
             <ProtectedRoute>
               <AlertRules />
@@ -64,7 +64,7 @@ function AppContent() {
           }
         />
         <Route
-          path="/users"
+          path='/users'
           element={
             <ProtectedRoute requireAdmin>
               <UserManagement />
@@ -72,14 +72,14 @@ function AppContent() {
           }
         />
         <Route
-          path="/backups"
+          path='/backups'
           element={
             <ProtectedRoute>
               <BackupManagement />
             </ProtectedRoute>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
     </div>
   );

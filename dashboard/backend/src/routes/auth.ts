@@ -9,7 +9,7 @@ export function createAuthRoutes() {
    * POST /api/auth/register
    * Register a new user
    */
-  router.post('/register', async (req: Request, res: Response) => {
+  router.post('/register', async (req: Request, res: Response): Promise<any> => {
     try {
       const { email, username, password, role } = req.body;
 
@@ -21,14 +21,14 @@ export function createAuthRoutes() {
         email,
         username,
         password,
-        role
+        role,
       });
 
       res.json({ user });
     } catch (error) {
       logger.error('Error in register route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to register user'
+        error: error instanceof Error ? error.message : 'Failed to register user',
       });
     }
   });
@@ -37,7 +37,7 @@ export function createAuthRoutes() {
    * POST /api/auth/login
    * Login user
    */
-  router.post('/login', async (req: Request, res: Response) => {
+  router.post('/login', async (req: Request, res: Response): Promise<any> => {
     try {
       const { email, password } = req.body;
 
@@ -48,17 +48,13 @@ export function createAuthRoutes() {
       const ipAddress = req.ip;
       const userAgent = req.get('user-agent');
 
-      const result = await AuthService.login(
-        { email, password },
-        ipAddress,
-        userAgent
-      );
+      const result = await AuthService.login({ email, password }, ipAddress, userAgent);
 
       res.json(result);
     } catch (error) {
       logger.error('Error in login route:', error);
       res.status(401).json({
-        error: error instanceof Error ? error.message : 'Failed to login'
+        error: error instanceof Error ? error.message : 'Failed to login',
       });
     }
   });
@@ -67,7 +63,7 @@ export function createAuthRoutes() {
    * POST /api/auth/logout
    * Logout user
    */
-  router.post('/logout', async (req: Request, res: Response) => {
+  router.post('/logout', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
 
@@ -81,7 +77,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in logout route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to logout'
+        error: error instanceof Error ? error.message : 'Failed to logout',
       });
     }
   });
@@ -90,7 +86,7 @@ export function createAuthRoutes() {
    * GET /api/auth/me
    * Get current user
    */
-  router.get('/me', async (req: Request, res: Response) => {
+  router.get('/me', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
 
@@ -108,7 +104,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in me route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to get user'
+        error: error instanceof Error ? error.message : 'Failed to get user',
       });
     }
   });
@@ -117,7 +113,7 @@ export function createAuthRoutes() {
    * GET /api/auth/users
    * Get all users (admin only)
    */
-  router.get('/users', async (req: Request, res: Response) => {
+  router.get('/users', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (!token) {
@@ -134,7 +130,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in users route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to get users'
+        error: error instanceof Error ? error.message : 'Failed to get users',
       });
     }
   });
@@ -143,7 +139,7 @@ export function createAuthRoutes() {
    * GET /api/auth/users/:id
    * Get user by ID (admin only)
    */
-  router.get('/users/:id', async (req: Request, res: Response) => {
+  router.get('/users/:id', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (!token) {
@@ -164,7 +160,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in get user route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to get user'
+        error: error instanceof Error ? error.message : 'Failed to get user',
       });
     }
   });
@@ -173,7 +169,7 @@ export function createAuthRoutes() {
    * PATCH /api/auth/users/:id
    * Update user (admin only)
    */
-  router.patch('/users/:id', async (req: Request, res: Response) => {
+  router.patch('/users/:id', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (!token) {
@@ -190,7 +186,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in update user route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to update user'
+        error: error instanceof Error ? error.message : 'Failed to update user',
       });
     }
   });
@@ -199,7 +195,7 @@ export function createAuthRoutes() {
    * DELETE /api/auth/users/:id
    * Delete user (admin only)
    */
-  router.delete('/users/:id', async (req: Request, res: Response) => {
+  router.delete('/users/:id', async (req: Request, res: Response): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (!token) {
@@ -216,7 +212,7 @@ export function createAuthRoutes() {
     } catch (error) {
       logger.error('Error in delete user route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to delete user'
+        error: error instanceof Error ? error.message : 'Failed to delete user',
       });
     }
   });

@@ -29,7 +29,7 @@ export class RedisCache {
       logger.info('Connected to Redis');
     });
 
-    this.redis.on('error', (error) => {
+    this.redis.on('error', (error: any) => {
       // Suppress connection errors if Redis is optional
       if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
         logger.warn('Redis not available (optional service)');
@@ -53,7 +53,7 @@ export class RedisCache {
    */
   async setHealth(instanceName: string, health: HealthStatus): Promise<void> {
     if (!this.isConnected()) return;
-    
+
     try {
       const key = `${this.HEALTH_PREFIX}${instanceName}`;
       await this.redis.setex(key, this.DEFAULT_TTL, JSON.stringify(health));
@@ -67,7 +67,7 @@ export class RedisCache {
    */
   async getHealth(instanceName: string): Promise<HealthStatus | null> {
     if (!this.isConnected()) return null;
-    
+
     try {
       const key = `${this.HEALTH_PREFIX}${instanceName}`;
       const data = await this.redis.get(key);
@@ -86,9 +86,13 @@ export class RedisCache {
   /**
    * Set latest metrics for an instance service
    */
-  async setMetrics(instanceName: string, serviceName: string, metrics: ResourceMetrics): Promise<void> {
+  async setMetrics(
+    instanceName: string,
+    serviceName: string,
+    metrics: ResourceMetrics
+  ): Promise<void> {
     if (!this.isConnected()) return;
-    
+
     try {
       const key = `${this.METRICS_PREFIX}${instanceName}:${serviceName}`;
       await this.redis.setex(key, this.DEFAULT_TTL, JSON.stringify(metrics));
@@ -102,7 +106,7 @@ export class RedisCache {
    */
   async getMetrics(instanceName: string, serviceName: string): Promise<ResourceMetrics | null> {
     if (!this.isConnected()) return null;
-    
+
     try {
       const key = `${this.METRICS_PREFIX}${instanceName}:${serviceName}`;
       const data = await this.redis.get(key);

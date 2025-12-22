@@ -1,5 +1,5 @@
 import Docker from 'dockerode';
-import { DockerContainerInfo, ContainerStats, ServiceStatus, ResourceMetrics } from '../types';
+import { ContainerStats, ServiceStatus, ResourceMetrics } from '../types';
 import { logger } from '../utils/logger';
 
 export class DockerManager {
@@ -21,8 +21,8 @@ export class DockerManager {
   async listProjectContainers(projectName: string): Promise<Docker.ContainerInfo[]> {
     try {
       const containers = await this.docker.listContainers({ all: true });
-      return containers.filter(container =>
-        container.Names.some(name => name.includes(projectName))
+      return containers.filter((container) =>
+        container.Names.some((name) => name.includes(projectName))
       );
     } catch (error) {
       logger.error(`Error listing containers for project ${projectName}:`, error);
@@ -36,15 +36,13 @@ export class DockerManager {
   async getContainerStats(containerId: string): Promise<ResourceMetrics | null> {
     try {
       const container = this.docker.getContainer(containerId);
-      const stats = await container.stats({ stream: false }) as unknown as ContainerStats;
+      const stats = (await container.stats({ stream: false })) as unknown as ContainerStats;
 
       // Calculate CPU percentage
-      const cpuDelta = stats.cpu_stats.cpu_usage.total_usage -
-                      stats.precpu_stats.cpu_usage.total_usage;
-      const systemDelta = stats.cpu_stats.system_cpu_usage -
-                         stats.precpu_stats.system_cpu_usage;
-      const cpuPercent = (cpuDelta / systemDelta) *
-                        (stats.cpu_stats.online_cpus || 1) * 100;
+      const cpuDelta =
+        stats.cpu_stats.cpu_usage.total_usage - stats.precpu_stats.cpu_usage.total_usage;
+      const systemDelta = stats.cpu_stats.system_cpu_usage - stats.precpu_stats.system_cpu_usage;
+      const cpuPercent = (cpuDelta / systemDelta) * (stats.cpu_stats.online_cpus || 1) * 100;
 
       // Memory in MB
       const memoryMB = stats.memory_stats.usage / (1024 * 1024);
@@ -53,7 +51,7 @@ export class DockerManager {
       let networkRx = 0;
       let networkTx = 0;
       if (stats.networks) {
-        Object.values(stats.networks).forEach(network => {
+        Object.values(stats.networks).forEach((network) => {
           networkRx += network.rx_bytes;
           networkTx += network.tx_bytes;
         });
@@ -63,7 +61,7 @@ export class DockerManager {
       let diskRead = 0;
       let diskWrite = 0;
       if (stats.blkio_stats.io_service_bytes_recursive) {
-        stats.blkio_stats.io_service_bytes_recursive.forEach(io => {
+        stats.blkio_stats.io_service_bytes_recursive.forEach((io) => {
           if (io.op === 'Read') diskRead += io.value;
           if (io.op === 'Write') diskWrite += io.value;
         });
@@ -76,7 +74,7 @@ export class DockerManager {
         networkTx,
         diskRead,
         diskWrite,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
     } catch (error) {
       logger.error(`Error getting stats for container ${containerId}:`, error);
@@ -115,18 +113,24 @@ export class DockerManager {
           : 0;
 
         // Get resource metrics (parallelize with inspect if running)
-        const metrics = inspect.State.Running
-          ? await this.getContainerStats(container.Id)
-          : null;
+        const metrics = inspect.State.Running ? await this.getContainerStats(container.Id) : null;
+
+        // Map Docker status to ServiceStatus type
+        let status: 'running' | 'stopped' | 'healthy' | 'unhealthy' | 'starting' = 'stopped';
+        if (inspect.State.Running) {
+          status = 'running';
+        } else if (inspect.State.Status === 'starting') {
+          status = 'starting';
+        }
 
         return {
           name: serviceName,
           containerName,
-          status: inspect.State.Running ? 'running' : 'stopped',
+          status,
           health,
           uptime,
           cpu: metrics?.cpu || 0,
-          memory: metrics?.memory || 0
+          memory: metrics?.memory || 0,
         };
       });
 
@@ -228,8 +232,8 @@ export class DockerManager {
   async restartService(projectName: string, serviceName: string): Promise<void> {
     try {
       const containers = await this.listProjectContainers(projectName);
-      const container = containers.find(c =>
-        this.extractServiceName(c.Names[0].replace('/', ''), projectName) === serviceName
+      const container = containers.find(
+        (c) => this.extractServiceName(c.Names[0].replace('/', ''), projectName) === serviceName
       );
 
       if (!container) {
@@ -259,7 +263,7 @@ export class DockerManager {
         stderr: true,
         tail: options.tail || 100,
         since: options.since,
-        timestamps: options.timestamps !== false
+        timestamps: options.timestamps !== false,
       });
 
       return logs.toString('utf8');
@@ -272,17 +276,14 @@ export class DockerManager {
   /**
    * Stream container logs
    */
-  async streamContainerLogs(
-    containerId: string,
-    callback: (chunk: string) => void
-  ): Promise<void> {
+  async streamContainerLogs(containerId: string, callback: (chunk: string) => void): Promise<void> {
     try {
       const container = this.docker.getContainer(containerId);
       const stream = await container.logs({
         stdout: true,
         stderr: true,
         follow: true,
-        timestamps: true
+        timestamps: true,
       });
 
       stream.on('data', (chunk: Buffer) => {
@@ -301,7 +302,10 @@ export class DockerManager {
   /**
    * Remove project containers
    */
-  async removeProjectContainers(projectName: string, removeVolumes: boolean = false): Promise<void> {
+  async removeProjectContainers(
+    projectName: string,
+    removeVolumes: boolean = false
+  ): Promise<void> {
     try {
       const containers = await this.listProjectContainers(projectName);
 

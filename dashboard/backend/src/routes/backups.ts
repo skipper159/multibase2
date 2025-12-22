@@ -9,7 +9,7 @@ export function createBackupRoutes() {
   /**
    * Middleware to check authentication
    */
-  const requireAuth = async (req: Request, res: Response, next: Function) => {
+  const requireAuth = async (req: Request, res: Response, next: Function): Promise<any> => {
     try {
       const token = req.headers.authorization?.replace('Bearer ', '');
       if (!token) {
@@ -32,7 +32,7 @@ export function createBackupRoutes() {
    * POST /api/backups
    * Create a new backup
    */
-  router.post('/', requireAuth, async (req: Request, res: Response) => {
+  router.post('/', requireAuth, async (req: Request, res: Response): Promise<any> => {
     try {
       const { type, instanceId, name } = req.body;
       const user = (req as any).user;
@@ -49,14 +49,14 @@ export function createBackupRoutes() {
         type,
         instanceId,
         name,
-        createdBy: user.id
+        createdBy: user.id,
       });
 
       res.json(backup);
     } catch (error) {
       logger.error('Error in create backup route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to create backup'
+        error: error instanceof Error ? error.message : 'Failed to create backup',
       });
     }
   });
@@ -74,7 +74,7 @@ export function createBackupRoutes() {
     } catch (error) {
       logger.error('Error in list backups route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to list backups'
+        error: error instanceof Error ? error.message : 'Failed to list backups',
       });
     }
   });
@@ -83,7 +83,7 @@ export function createBackupRoutes() {
    * GET /api/backups/:id
    * Get backup by ID
    */
-  router.get('/:id', requireAuth, async (req: Request, res: Response) => {
+  router.get('/:id', requireAuth, async (req: Request, res: Response): Promise<any> => {
     try {
       const backup = await BackupService.getBackup(req.params.id);
 
@@ -95,7 +95,7 @@ export function createBackupRoutes() {
     } catch (error) {
       logger.error('Error in get backup route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to get backup'
+        error: error instanceof Error ? error.message : 'Failed to get backup',
       });
     }
   });
@@ -104,7 +104,7 @@ export function createBackupRoutes() {
    * POST /api/backups/:id/restore
    * Restore from backup
    */
-  router.post('/:id/restore', requireAuth, async (req: Request, res: Response) => {
+  router.post('/:id/restore', requireAuth, async (req: Request, res: Response): Promise<any> => {
     try {
       const user = (req as any).user;
 
@@ -117,14 +117,14 @@ export function createBackupRoutes() {
 
       const result = await BackupService.restoreBackup({
         backupId: req.params.id,
-        instanceId
+        instanceId,
       });
 
       res.json(result);
     } catch (error) {
       logger.error('Error in restore backup route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to restore backup'
+        error: error instanceof Error ? error.message : 'Failed to restore backup',
       });
     }
   });
@@ -133,7 +133,7 @@ export function createBackupRoutes() {
    * DELETE /api/backups/:id
    * Delete backup
    */
-  router.delete('/:id', requireAuth, async (req: Request, res: Response) => {
+  router.delete('/:id', requireAuth, async (req: Request, res: Response): Promise<any> => {
     try {
       const user = (req as any).user;
 
@@ -148,7 +148,7 @@ export function createBackupRoutes() {
     } catch (error) {
       logger.error('Error in delete backup route:', error);
       res.status(500).json({
-        error: error instanceof Error ? error.message : 'Failed to delete backup'
+        error: error instanceof Error ? error.message : 'Failed to delete backup',
       });
     }
   });

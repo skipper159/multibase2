@@ -57,11 +57,8 @@ export class AuthService {
       // Check if user already exists
       const existingUser = await prisma.user.findFirst({
         where: {
-          OR: [
-            { email: data.email },
-            { username: data.username }
-          ]
-        }
+          OR: [{ email: data.email }, { username: data.username }],
+        },
       });
 
       if (existingUser) {
@@ -78,7 +75,7 @@ export class AuthService {
           username: data.username,
           passwordHash,
           role: data.role || 'user',
-          isActive: true
+          isActive: true,
         },
         select: {
           id: true,
@@ -86,8 +83,8 @@ export class AuthService {
           username: true,
           role: true,
           isActive: true,
-          createdAt: true
-        }
+          createdAt: true,
+        },
       });
 
       logger.info(`User registered: ${user.email}`);
@@ -101,11 +98,15 @@ export class AuthService {
   /**
    * Login user and create session
    */
-  async login(credentials: LoginCredentials, ipAddress?: string, userAgent?: string): Promise<{ user: any; session: SessionData }> {
+  async login(
+    credentials: LoginCredentials,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<{ user: any; session: SessionData }> {
     try {
       // Find user
       const user = await prisma.user.findUnique({
-        where: { email: credentials.email }
+        where: { email: credentials.email },
       });
 
       if (!user || !user.isActive) {
@@ -128,14 +129,14 @@ export class AuthService {
           token,
           expiresAt,
           ipAddress,
-          userAgent
-        }
+          userAgent,
+        },
       });
 
       // Update last login
       await prisma.user.update({
         where: { id: user.id },
-        data: { lastLogin: new Date() }
+        data: { lastLogin: new Date() },
       });
 
       logger.info(`User logged in: ${user.email}`);
@@ -145,14 +146,14 @@ export class AuthService {
           id: user.id,
           email: user.email,
           username: user.username,
-          role: user.role
+          role: user.role,
         },
         session: {
           id: session.id,
           userId: session.userId,
           token: session.token,
-          expiresAt: session.expiresAt
-        }
+          expiresAt: session.expiresAt,
+        },
       };
     } catch (error) {
       logger.error('Error logging in:', error);
@@ -174,10 +175,10 @@ export class AuthService {
               email: true,
               username: true,
               role: true,
-              isActive: true
-            }
-          }
-        }
+              isActive: true,
+            },
+          },
+        },
       });
 
       if (!session || !session.user.isActive) {
@@ -196,8 +197,8 @@ export class AuthService {
           id: session.id,
           userId: session.userId,
           token: session.token,
-          expiresAt: session.expiresAt
-        }
+          expiresAt: session.expiresAt,
+        },
       };
     } catch (error) {
       logger.error('Error validating session:', error);
@@ -211,7 +212,7 @@ export class AuthService {
   async logout(token: string): Promise<void> {
     try {
       await prisma.session.delete({
-        where: { token }
+        where: { token },
       });
       logger.info('User logged out');
     } catch (error) {
@@ -234,9 +235,9 @@ export class AuthService {
           isActive: true,
           lastLogin: true,
           createdAt: true,
-          updatedAt: true
+          updatedAt: true,
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
       logger.error('Error fetching users:', error);
@@ -259,8 +260,8 @@ export class AuthService {
           isActive: true,
           lastLogin: true,
           createdAt: true,
-          updatedAt: true
-        }
+          updatedAt: true,
+        },
       });
     } catch (error) {
       logger.error('Error fetching user:', error);
@@ -294,8 +295,8 @@ export class AuthService {
           isActive: true,
           lastLogin: true,
           createdAt: true,
-          updatedAt: true
-        }
+          updatedAt: true,
+        },
       });
 
       logger.info(`User updated: ${user.email}`);
@@ -312,7 +313,7 @@ export class AuthService {
   async deleteUser(id: string): Promise<void> {
     try {
       await prisma.user.delete({
-        where: { id }
+        where: { id },
       });
       logger.info(`User deleted: ${id}`);
     } catch (error) {
@@ -327,7 +328,7 @@ export class AuthService {
   async createInitialAdmin() {
     try {
       const adminExists = await prisma.user.findFirst({
-        where: { role: 'admin' }
+        where: { role: 'admin' },
       });
 
       if (!adminExists) {
@@ -336,7 +337,7 @@ export class AuthService {
           email: 'admin@multibase.local',
           username: 'admin',
           password: defaultPassword,
-          role: 'admin'
+          role: 'admin',
         });
         logger.info('Initial admin user created');
         logger.warn(`Default admin password: ${defaultPassword}`);

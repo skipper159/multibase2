@@ -9,7 +9,9 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 ## 📋 Implementierte Features
 
 ### 1. ✅ Authentifizierung & Sicherheit
+
 **Backend:**
+
 - `AuthService.ts` - Kompletter Auth-Service mit bcrypt Passwort-Hashing
 - `routes/auth.ts` - Auth API Endpoints (Register, Login, Logout, User-CRUD)
 - Session-Management mit JWT Tokens
@@ -17,6 +19,7 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Middleware für geschützte Routen
 
 **Frontend:**
+
 - `AuthContext.tsx` - Auth State Management & Protected Routes
 - `Login.tsx` - Login-Seite mit Formular-Validierung
 - Token-Persistierung in localStorage
@@ -24,17 +27,21 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Redirect bei nicht authentifizierten Zugriffen
 
 **Datenbank:**
+
 - User Tabelle (email, username, passwordHash, role)
 - Session Tabelle (token, expiresAt, userId)
 - Initialer Admin-User erstellt
 
 ### 2. ✅ Benutzer-Management
+
 **Backend:**
+
 - GET `/api/auth/users` - Alle Benutzer auflisten (Admin only)
 - PATCH `/api/auth/users/:id` - Benutzer bearbeiten (Admin only)
 - DELETE `/api/auth/users/:id` - Benutzer löschen (Admin only)
 
 **Frontend:**
+
 - `UserManagement.tsx` - Vollständige User-Verwaltung UI
 - Benutzer-Tabelle mit Rollen-Badges
 - Neuen Benutzer erstellen
@@ -42,7 +49,9 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Nur für Admins zugänglich
 
 ### 3. ✅ Backup & Restore
+
 **Backend:**
+
 - `BackupService.ts` - Kompletter Backup-Service
   - Full Backups (DB + Volumes)
   - Instance Backups
@@ -53,6 +62,7 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Backup Metadata in Datenbank
 
 **Frontend:**
+
 - `BackupManagement.tsx` - Backup-Verwaltung UI
 - Backup erstellen (3 Typen wählbar)
 - Backup-Liste mit Größen & Zeitstempeln
@@ -60,10 +70,13 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Backups löschen
 
 **Datenbank:**
+
 - Backup Tabelle (instanceName, type, path, size, createdBy)
 
 ### 4. ✅ Dashboard Integration
+
 **Routing:**
+
 - `/login` - Login-Seite (öffentlich)
 - `/` - Dashboard (geschützt)
 - `/instances/:name` - Instanz-Details (geschützt)
@@ -72,6 +85,7 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - `/backups` - Backup-Verwaltung (geschützt)
 
 **UI Erweiterungen:**
+
 - User-Menü im Dashboard-Header
 - Logout-Button
 - Links zu User-Management (Admin)
@@ -79,7 +93,9 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - Rollen-Anzeige im Profil
 
 ### 5. ✅ Build & Deployment
+
 **Backend:**
+
 - Alle Dependencies installiert (bcryptjs, archiver, extract-zip)
 - Datenbank-Migration durchgeführt
 - .env Datei erstellt
@@ -87,6 +103,7 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 - `npm run init:admin` Script hinzugefügt
 
 **Frontend:**
+
 - Build-Optimierung mit Code-Splitting
 - TypeScript-Fehler behoben
 - Alle Komponenten implementiert
@@ -96,6 +113,7 @@ Alle angeforderten Features wurden erfolgreich implementiert und sind einsatzber
 ## 🚀 Installation & Start
 
 ### Initiale Einrichtung (bereits durchgeführt):
+
 ```powershell
 # Backend Dependencies
 cd dashboard/backend
@@ -113,6 +131,7 @@ npm install  # ✅ Bereit
 ```
 
 ### Dashboard starten:
+
 ```powershell
 # Option 1: PowerShell Script (empfohlen)
 cd dashboard
@@ -129,6 +148,7 @@ npm run dev
 ```
 
 ### Zugriff:
+
 - **Frontend:** http://localhost:5173
 - **Backend API:** http://localhost:3001
 - **Login:** admin@multibase.local / admin123
@@ -151,6 +171,7 @@ Rolle:    Admin
 ## 📁 Neue/Geänderte Dateien
 
 ### Backend (12 Dateien)
+
 1. `src/services/AuthService.ts` - Auth-Logik
 2. `src/services/BackupService.ts` - Backup-Logik
 3. `src/routes/auth.ts` - Auth-Endpoints
@@ -164,6 +185,7 @@ Rolle:    Admin
 11. `data/multibase.db` - SQLite Datenbank erstellt
 
 ### Frontend (8 Dateien)
+
 1. `src/contexts/AuthContext.tsx` - Auth State Management
 2. `src/pages/Login.tsx` - Login-Seite
 3. `src/pages/UserManagement.tsx` - User-Verwaltung
@@ -174,6 +196,7 @@ Rolle:    Admin
 8. `vite.config.ts` - Bereits optimiert
 
 ### Dokumentation (2 Dateien)
+
 1. `README.md` - Vollständig aktualisiert
 2. `COMPLETION.md` - Bereits vorhanden
 
@@ -182,6 +205,7 @@ Rolle:    Admin
 ## 🔑 API Endpoints Übersicht
 
 ### Authentifizierung
+
 ```
 POST   /api/auth/register         # Neuen User registrieren
 POST   /api/auth/login            # Login
@@ -193,6 +217,7 @@ DELETE /api/auth/users/:id        # User löschen (Admin)
 ```
 
 ### Backups
+
 ```
 POST   /api/backups               # Backup erstellen
 GET    /api/backups               # Alle Backups
@@ -202,6 +227,7 @@ DELETE /api/backups/:id           # Backup löschen (Admin)
 ```
 
 ### Instanzen (bereits vorhanden)
+
 ```
 GET    /api/instances             # Alle Instanzen
 POST   /api/instances             # Neue Instanz
@@ -217,6 +243,7 @@ POST   /api/instances/:name/stop  # Instanz stoppen
 ## 🎯 Rollen & Berechtigungen
 
 ### Admin
+
 - ✅ Voller Zugriff auf alle Features
 - ✅ Benutzer-Verwaltung
 - ✅ Backup/Restore Operationen
@@ -224,6 +251,7 @@ POST   /api/instances/:name/stop  # Instanz stoppen
 - ✅ Alle Einstellungen
 
 ### User
+
 - ✅ Instanzen anzeigen & verwalten
 - ✅ Backups erstellen
 - ✅ Metriken & Logs ansehen
@@ -231,6 +259,7 @@ POST   /api/instances/:name/stop  # Instanz stoppen
 - ❌ Kein Backup-Restore
 
 ### Viewer
+
 - ✅ Nur Lesezugriff
 - ✅ Metriken & Logs ansehen
 - ❌ Keine Änderungen
@@ -241,6 +270,7 @@ POST   /api/instances/:name/stop  # Instanz stoppen
 ## 🧪 Nächste Schritte (Deployment auf Server)
 
 ### 1. Auf Server deployen
+
 ```bash
 # Repository auf Server klonen
 git clone <repo-url>
@@ -264,6 +294,7 @@ npm start
 ```
 
 ### 2. Wichtige Anpassungen für Production:
+
 - ✅ `SESSION_SECRET` in .env ändern (min. 32 Zeichen)
 - ✅ Admin-Passwort ändern nach erstem Login
 - ✅ `NODE_ENV=production` setzen
@@ -274,6 +305,7 @@ npm start
 - ✅ Backup-Strategie für Datenbank einrichten
 
 ### 3. Optionale Verbesserungen:
+
 - Email-Versand für Passwort-Reset
 - 2FA (Two-Factor Authentication)
 - Audit-Logs für alle Admin-Aktionen
@@ -286,6 +318,7 @@ npm start
 ## 📊 Technologie-Stack
 
 ### Frontend
+
 - React 19.2.0 + TypeScript 5.6.2
 - Vite 5.0.11 (Build-Tool)
 - TailwindCSS 3.4.1 (Styling)
@@ -294,6 +327,7 @@ npm start
 - React Router 6.21.1 (Routing)
 
 ### Backend
+
 - Node.js 20+ + TypeScript 5.3.3
 - Express 4.18.2 (Web-Framework)
 - Prisma 5.8.0 (ORM)
@@ -330,16 +364,19 @@ Vor dem Deployment testen:
 ## 📝 Hinweise
 
 1. **Keine lokale Docker-Umgebung:**
+
    - Projekt wurde ohne lokale Tests entwickelt
    - Auf Server testen nach Deployment
    - Docker Socket Path evtl. anpassen
 
 2. **Datenbank-Backups:**
+
    - SQLite DB liegt in `backend/data/multibase.db`
    - Regelmäßig sichern!
    - Bei Migration zu PostgreSQL: Schema ist bereit
 
 3. **Session-Management:**
+
    - Sessions ablaufen nach 7 Tagen (konfigurierbar)
    - Token wird in localStorage gespeichert
    - Logout löscht Token & Session
@@ -356,6 +393,7 @@ Vor dem Deployment testen:
 **Das Projekt ist vollständig implementiert und bereit für den Produktiveinsatz!**
 
 Alle Features wurden erfolgreich entwickelt:
+
 - ✅ Authentifizierung mit bcrypt & Sessions
 - ✅ Benutzer-Management mit Rollen
 - ✅ Backup & Restore Funktionalität
@@ -370,6 +408,7 @@ Alle Features wurden erfolgreich entwickelt:
 **Viel Erfolg mit Multibase! 🚀**
 
 Bei Fragen zur Implementierung, siehe:
+
 - [README.md](README.md) - Hauptdokumentation
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Deployment-Guide
 - [QUICKSTART.md](QUICKSTART.md) - Schnellstart

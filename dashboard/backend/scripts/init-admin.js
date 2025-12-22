@@ -7,7 +7,7 @@ async function createInitialAdmin() {
   try {
     // Check if any user exists
     const existingUser = await prisma.user.findFirst();
-    
+
     if (existingUser) {
       console.log('ℹ️  Users already exist. Skipping initialization.');
       return;
@@ -15,7 +15,7 @@ async function createInitialAdmin() {
 
     // Create admin user
     const passwordHash = await bcrypt.hash('admin123', 10);
-    
+
     const admin = await prisma.user.create({
       data: {
         email: 'admin@multibase.local',

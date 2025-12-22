@@ -5,6 +5,7 @@ Ein vollständig funktionsfähiges Dashboard zur Verwaltung mehrerer Supabase-In
 ## ✅ Implementierte Features
 
 ### 🔐 Authentifizierung & Benutzer-Management
+
 - ✅ Session-basierte Authentifizierung mit JWT
 - ✅ Bcrypt Passwort-Hashing
 - ✅ Rollenverwaltung (Admin, User, Viewer)
@@ -14,6 +15,7 @@ Ein vollständig funktionsfähiges Dashboard zur Verwaltung mehrerer Supabase-In
 - ✅ Session-Verwaltung mit automatischem Ablauf
 
 ### 💾 Backup & Restore
+
 - ✅ Vollständige Backups (Datenbank + Volumes)
 - ✅ Instanz-spezifische Backups
 - ✅ Datenbank-only Backups
@@ -22,6 +24,7 @@ Ein vollständig funktionsfähiges Dashboard zur Verwaltung mehrerer Supabase-In
 - ✅ Automatische ZIP-Komprimierung
 
 ### 📊 Dashboard Features
+
 - ✅ Echtzeit-Monitoring aller Instanzen
 - ✅ Health-Checks für Services
 - ✅ Metriken-Erfassung (CPU, RAM, etc.)
@@ -53,6 +56,7 @@ dashboard/
 ## Tech Stack
 
 ### Backend
+
 - **Node.js 20+** with TypeScript
 - **Express** - REST API framework
 - **Socket.io** - Real-time WebSocket communication
@@ -61,6 +65,7 @@ dashboard/
 - **dockerode** - Docker API integration
 
 ### Frontend
+
 - **React 19.2** with TypeScript
 - **Vite** - Build tool and dev server
 - **TailwindCSS** + **shadcn/ui** - Styling and components
@@ -90,6 +95,7 @@ cd C:\path\to\multibase\dashboard
 ```
 
 The script will:
+
 - Check prerequisites (Node.js 20+, Docker, Redis)
 - Install dependencies
 - Initialize database
@@ -252,7 +258,7 @@ GET  /api/ping                              # Dashboard health check
 // Subscribe to log streaming
 socket.emit('logs:subscribe', {
   instanceName: 'popupcash',
-  serviceName: 'kong'
+  serviceName: 'kong',
 });
 
 // Unsubscribe from logs
@@ -283,6 +289,7 @@ socket.on('logs:data', (data) => {});
 ### Create a New Instance
 
 **via API:**
+
 ```bash
 curl -X POST http://localhost:3001/api/instances \
   -H "Content-Type: application/json" \
@@ -295,6 +302,7 @@ curl -X POST http://localhost:3001/api/instances \
 ```
 
 **via Dashboard:**
+
 1. Click "+ Create Instance" button
 2. Fill in the form:
    - Name: myproject
@@ -306,6 +314,7 @@ curl -X POST http://localhost:3001/api/instances \
 ### Start/Stop an Instance
 
 **via API:**
+
 ```bash
 # Start
 curl -X POST http://localhost:3001/api/instances/myproject/start
@@ -318,12 +327,14 @@ curl -X POST http://localhost:3001/api/instances/myproject/restart
 ```
 
 **via Dashboard:**
+
 - Click the instance card
 - Use the Start/Stop/Restart buttons
 
 ### View Logs
 
 **via API:**
+
 ```bash
 # Get recent logs
 curl http://localhost:3001/api/logs/instances/myproject/services/kong?tail=100
@@ -332,6 +343,7 @@ curl http://localhost:3001/api/logs/instances/myproject/services/kong?tail=100
 ```
 
 **via Dashboard:**
+
 1. Navigate to instance detail page
 2. Click "Logs" tab
 3. Select service from dropdown
@@ -340,6 +352,7 @@ curl http://localhost:3001/api/logs/instances/myproject/services/kong?tail=100
 ### Get Metrics
 
 **via API:**
+
 ```bash
 # Latest metrics
 curl http://localhost:3001/api/metrics/instances/myproject
@@ -352,6 +365,7 @@ curl http://localhost:3001/api/metrics/system
 ```
 
 **via Dashboard:**
+
 - Metrics are displayed on the instance detail page
 - Charts show trends over time
 - Auto-refresh every 15 seconds
@@ -436,7 +450,7 @@ services:
   dashboard-backend:
     build: ./backend
     ports:
-      - "3001:3001"
+      - '3001:3001'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ../projects:/app/projects
@@ -451,14 +465,14 @@ services:
   dashboard-frontend:
     build: ./frontend
     ports:
-      - "5173:80"
+      - '5173:80'
     depends_on:
       - dashboard-backend
 
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     volumes:
       - redis-data:/data
 
@@ -467,6 +481,7 @@ volumes:
 ```
 
 Start the dashboard:
+
 ```bash
 docker compose up -d
 ```
@@ -474,6 +489,7 @@ docker compose up -d
 ### Option 2: Standalone Deployment
 
 **Backend:**
+
 ```bash
 cd backend
 npm run build
@@ -481,6 +497,7 @@ NODE_ENV=production npm start
 ```
 
 **Frontend:**
+
 ```bash
 cd frontend
 npm run build
@@ -494,6 +511,7 @@ npx serve -s dist -l 5173
 ### ✅ Completed Features
 
 #### Backend (100% Complete)
+
 - ✅ Full Node.js backend with TypeScript
 - ✅ Docker integration via dockerode
 - ✅ Instance lifecycle management (create, start, stop, delete)
@@ -508,6 +526,7 @@ npx serve -s dist -l 5173
 - ✅ Log streaming from containers
 
 #### Frontend (100% Complete)
+
 - ✅ React 19.2 + TypeScript + Vite
 - ✅ TailwindCSS + shadcn/ui components
 - ✅ Dashboard overview page with metrics
@@ -525,6 +544,7 @@ npx serve -s dist -l 5173
 - ✅ Error handling & loading states
 
 #### Deployment & DevOps (100% Complete)
+
 - ✅ Production deployment documentation
 - ✅ PowerShell launch script for Windows
 - ✅ Bash launch script for Linux
@@ -554,16 +574,19 @@ The Multibase Dashboard is now **100% complete** and ready for production deploy
 ### Backend won't start
 
 **Check Docker connectivity:**
+
 ```bash
 docker ps
 ```
 
 **Check Redis connectivity:**
+
 ```bash
 redis-cli ping
 ```
 
 **Check logs:**
+
 ```bash
 cd backend
 tail -f logs/combined.log
@@ -572,17 +595,20 @@ tail -f logs/combined.log
 ### Cannot create instances
 
 **Verify projects path exists:**
+
 ```bash
 ls -la ../projects
 ```
 
 **Check Docker socket permissions:**
+
 ```bash
 ls -l /var/run/docker.sock
 # Should be readable by your user
 ```
 
 **Check port availability:**
+
 ```bash
 netstat -tuln | grep <port>
 ```
@@ -590,6 +616,7 @@ netstat -tuln | grep <port>
 ### WebSocket not connecting
 
 **Verify CORS settings in backend/.env:**
+
 ```env
 CORS_ORIGIN=http://localhost:5173
 ```
@@ -597,6 +624,7 @@ CORS_ORIGIN=http://localhost:5173
 **Check browser console for errors**
 
 **Ensure Socket.io is running:**
+
 ```bash
 curl http://localhost:3001/socket.io/
 ```
@@ -642,6 +670,7 @@ MIT
 ## Support
 
 For issues or questions:
+
 - Check the logs in `backend/logs/`
 - Review the API documentation above
 - Check Docker container status: `docker ps -a`

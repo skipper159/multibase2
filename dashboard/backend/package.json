@@ -12,7 +12,12 @@
     "prisma:studio": "prisma studio",
     "init:admin": "node scripts/init-admin.js"
   },
-  "keywords": ["multibase", "supabase", "dashboard", "docker"],
+  "keywords": [
+    "multibase",
+    "supabase",
+    "dashboard",
+    "docker"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {

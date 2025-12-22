@@ -11,6 +11,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 ### Backend (100% ✅)
 
 #### Core Services
+
 - ✅ **DockerManager**: Docker Container-Verwaltung über dockerode
 - ✅ **InstanceManager**: Supabase-Instanz Lifecycle-Management
 - ✅ **HealthMonitor**: Echtzeit-Gesundheitsüberwachung mit Background-Service
@@ -18,6 +19,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ **RedisCache**: Caching-Layer für Real-time Daten
 
 #### API Endpoints
+
 - ✅ Instances API (CRUD + Lifecycle)
 - ✅ Health API (Status + Refresh)
 - ✅ Metrics API (Current + History)
@@ -25,6 +27,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ Alerts API (Rules + Notifications)
 
 #### Real-time Features
+
 - ✅ Socket.io WebSocket-Server
 - ✅ Live Instance-Updates
 - ✅ Live Metrics-Streaming
@@ -32,6 +35,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ Alert-Benachrichtigungen
 
 #### Data Layer
+
 - ✅ Prisma ORM mit SQLite
 - ✅ Redis für Caching
 - ✅ Historische Daten-Speicherung
@@ -42,12 +46,14 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 ### Frontend (100% ✅)
 
 #### Pages & Routes
+
 - ✅ **Dashboard** (`/`): Übersicht aller Instanzen
 - ✅ **Instance Detail** (`/instances/:name`): Detailansicht mit Tabs
 - ✅ **Alerts** (`/alerts`): Alert-Zentrale
 - ✅ **Alert Rules** (`/alert-rules`): Regel-Konfiguration
 
 #### Components
+
 - ✅ **InstanceCard**: Instance-Übersichtskarte mit Status
 - ✅ **CreateInstanceModal**: Wizard für neue Instanzen
 - ✅ **ServicesTab**: Service-Status und -Kontrolle
@@ -56,11 +62,13 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ **CredentialsTab**: API-Keys und Passwörter
 
 #### Charts & Visualizations
+
 - ✅ **LineChart**: Zeitreihen-Diagramme (CPU, Memory, etc.)
 - ✅ **BarChart**: Vergleichs-Diagramme
 - ✅ **GaugeChart**: Prozent-Anzeigen
 
 #### Features
+
 - ✅ React Query für Data-Fetching
 - ✅ WebSocket Integration
 - ✅ Real-time Updates
@@ -75,6 +83,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 ### DevOps & Deployment (100% ✅)
 
 #### Scripts
+
 - ✅ **start.ps1**: Windows PowerShell Launcher
 - ✅ **launch.sh**: Linux/macOS Bash Launcher
 - ✅ Automatische Dependency-Installation
@@ -82,6 +91,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ Database-Initialisierung
 
 #### Documentation
+
 - ✅ **README.md**: Vollständige Projekt-Dokumentation
 - ✅ **DEPLOYMENT.md**: Production Deployment Guide
 - ✅ **QUICKSTART.md**: 5-Minuten Schnellstart
@@ -89,6 +99,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ Troubleshooting Guide
 
 #### Configuration
+
 - ✅ Environment Templates
 - ✅ Nginx Reverse Proxy Config
 - ✅ Systemd Service Files
@@ -96,6 +107,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - ✅ SSL/HTTPS Configuration
 
 #### Build & Optimization
+
 - ✅ TypeScript Compilation
 - ✅ Vite Build Pipeline
 - ✅ Code Splitting
@@ -142,6 +154,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 ## 📦 Tech Stack
 
 ### Backend
+
 - **Runtime**: Node.js 20+
 - **Language**: TypeScript 5.3+
 - **Framework**: Express 4.18
@@ -152,6 +165,7 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 - **Logging**: Winston 3.11
 
 ### Frontend
+
 - **Framework**: React 19.0
 - **Language**: TypeScript 5.3+
 - **Build Tool**: Vite 5.0
@@ -170,12 +184,14 @@ Das Multibase Dashboard ist vollständig implementiert und produktionsbereit!
 ### Quick Start (< 5 Minuten)
 
 **Windows:**
+
 ```powershell
 cd C:\path\to\multibase\dashboard
 .\start.ps1
 ```
 
 **Linux/macOS:**
+
 ```bash
 cd /path/to/multibase/dashboard
 ./launch.sh
@@ -190,24 +206,28 @@ cd /path/to/multibase/dashboard
 ### ✅ Complete Feature List
 
 1. **Instance Management**
+
    - Erstellen, Starten, Stoppen, Löschen von Instanzen
    - Automatische Port-Zuweisung
    - Docker Compose Generierung
    - Credential-Generierung (JWT, Passwords, API Keys)
 
 2. **Monitoring**
+
    - Echtzeit-Gesundheitsstatus
    - CPU, Memory, Disk, Network Metriken
    - Historische Daten (Zeitreihen)
    - Service-Level Monitoring
 
 3. **Logging**
+
    - Echtzeit-Log-Streaming
    - Filterung nach Service
    - Tail-Optionen
    - Download-Funktion
 
 4. **Alerts**
+
    - Regel-basierte Alarme
    - Schwellenwert-Konfiguration
    - Browser-Benachrichtigungen
@@ -277,7 +297,7 @@ curl http://localhost:3001/api/metrics/production
 const socket = io('http://localhost:3001');
 socket.emit('logs:subscribe', {
   instanceName: 'production',
-  serviceName: 'kong'
+  serviceName: 'kong',
 });
 socket.on('logs:data', (data) => console.log(data));
 ```

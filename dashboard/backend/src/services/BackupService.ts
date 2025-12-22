@@ -1,13 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { logger } from '../utils/logger';
 
-const execAsync = promisify(exec);
 const prisma = new PrismaClient();
 
 export interface BackupOptions {
@@ -91,8 +88,8 @@ export class BackupService {
           instanceId: options.instanceId,
           size,
           path: backupPath,
-          createdBy: options.createdBy
-        }
+          createdBy: options.createdBy,
+        },
       });
 
       logger.info(`Backup created: ${backupName} (${this.formatBytes(size)})`);
@@ -116,11 +113,11 @@ export class BackupService {
           user: {
             select: {
               email: true,
-              username: true
-            }
-          }
+              username: true,
+            },
+          },
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
       logger.error('Error listing backups:', error);
@@ -139,10 +136,10 @@ export class BackupService {
           user: {
             select: {
               email: true,
-              username: true
-            }
-          }
-        }
+              username: true,
+            },
+          },
+        },
       });
     } catch (error) {
       logger.error('Error fetching backup:', error);
@@ -165,7 +162,7 @@ export class BackupService {
 
       // Delete database record
       await prisma.backup.delete({
-        where: { id }
+        where: { id },
       });
 
       logger.info(`Backup deleted: ${backup.name}`);
@@ -303,7 +300,7 @@ export class BackupService {
     // Copy projects
     const projectsDest = path.join(process.cwd(), '../../projects');
     const extractedProjects = await fs.readdir(extractPath);
-    
+
     for (const item of extractedProjects) {
       if (item !== 'multibase.db') {
         const src = path.join(extractPath, item);
@@ -319,7 +316,7 @@ export class BackupService {
   private async restoreInstanceBackup(extractPath: string, instanceId: string): Promise<void> {
     const projectsDest = path.join(process.cwd(), '../../projects', instanceId);
     const extractedDirs = await fs.readdir(extractPath);
-    
+
     if (extractedDirs.length > 0) {
       const src = path.join(extractPath, extractedDirs[0]);
       await this.copyRecursive(src, projectsDest);
@@ -362,7 +359,7 @@ export class BackupService {
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   }
 }
 
