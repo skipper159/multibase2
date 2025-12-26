@@ -1,463 +1,223 @@
-# Supabase Secure Self-Hosting Deployment Manager
+# Multibase - Deep Technical Architecture
 
-This repository provides a robust, secure, and reproducible workflow for creating and managing self-hosted Supabase deployments using Docker Compose.
+**Multibase** is a hybrid orchestration platform combining a Node.js management API with robust Python-based automation scripts. It is designed to act as a "Single Pane of Glass" for managing self-hosted Supabase instances, leveraging the standard Docker Compose runtime for reliability.
 
-**Two ways to manage your deployments:**
-- **Command Line Interface (CLI)** - Fast, scriptable deployment and management tools
-- **Web Dashboard** - Visual monitoring and management with real-time metrics, logs, and alerts
+This document details the internal technical operations of the platform.
 
 ---
 
-## Quick Start
+## 🏗️ Core Architecture & Tech Stack
 
-Choose your preferred management approach:
+The system is composed of three distinct layers:
 
-### Option 1: CLI (Fast Setup)
+### 1. The Management Layer (Dashboard)
+
+The Dashboard serves as the central control plane.
+
+- **Backend Runtime**: Node.js 20+ with Express.
+- **Database**: SQLite (via Prisma ORM) stores metadata, user accounts, and audit logs. This lightweight choices ensures zero-dependency installation.
+- **Interoperability**: The Node.js backend spawns Python 3 subprocesses to execute complex infrastructure tasks (like project generation), bridging the gap between the web UI and system-level scripts.
+- **Docker Integration**: Uses the `dockerode` library to communicate directly with the Docker Socket (`/var/run/docker.sock`) for container lifecycle management and stats collection.
+
+### 2. The Infrastructure Layer (Projects)
+
+Every Supabase instance ("Project") is an isolated file-system based entity.
+
+- **Directory Structure**: Located in `projects/<project-name>/`.
+- **Configuration**: Each project has its own `.env` file containing unique credentials and port mappings, and a `docker-compose.yml` defining the service stack.
+- **Data Persistence**: All state (Database, Storage, Logs) is stored in the `projects/<project-name>/volumes/` directory. This makes backups simple: creating a tarball of the project directory captures the entire state.
+
+### 3. The Runtime Layer (Containers)
+
+Instances run as standard Docker Compose stacks.
+
+- **Networking**: Each instance is assigned a dedicated Docker Bridge Network to ensure isolation.
+- **Ports**: The system manages a strict port registry to prevent conflicts.
+- **Services**: A standard stack includes 7-9 containers:
+  - `kong` (API Gateway)
+  - `db` (PostgreSQL)
+  - `auth` (GoTrue)
+  - `rest` (PostgREST)
+  - `realtime` (Elixir/Phoenix)
+  - `storage`, `meta`, `analytics`, `function`.
+
+---
+
+## ⚙️ Detailed Operational Workflows
+
+### 1. Instance Creation Lifecycle
+
+The creation process is a hybrid operation involving both the Node.js API and Python scripts:
+
+1.  **Request**: The Frontend sends a `POST /api/instances` request with the desired name.
+2.  **Validation**: The `InstanceManager` service validates the name and checks for existing directories.
+3.  **Port Allocation**: The system scans the `projects/` directory to identify used ports (Kong, DB, Studio). It assigns the next available block of 10 ports to the new instance.
+4.  **Python Delegation**: The Node.js backend spawns a child process executing `python supabase_manager.py create <name> --base-port <port>`.
+5.  **Generation**: The Python script:
+    - Creates the directory structure.
+    - Generates secure random secrets (JWTs, Database Passwords) using Python's `secrets` module.
+    - Writes the custom `.env` and `docker-compose.yml`.
+6.  **Registration**: Upon success, the Node.js backend registers the new instance in its SQLite database for tracking metrics and history.
+
+### 2. Monitoring Pipeline
+
+Multibase allows for real-time monitoring without external agents like Prometheus.
+
+1.  **Polling**: The `DockerManager` service polls the Docker Engine stats API every 2-5 seconds.
+2.  **Calculation**: It calculates CPU percentage by comparing the `cpu_usage` delta against `system_cpu_usage` (simulating the `docker stats` command). Memory is calculated from `memory_stats.usage`.
+3.  **Broadcasting**: These metrics are pushed to the Frontend via a WebSocket connection (`socket.io`).
+4.  **Visualization**: The Frontend subscribes to a specific "Room" (e.g., `instance:<id>`) to receive relevant updates, ensuring low bandwidth usage.
+
+### 3. Backup & Recovery Mechanism
+
+The backup system allows for automated "point-in-time" snapshots of the PostgreSQL database.
+
+- **Trigger**: Can be manual (API request) or automated (Cron schedule via `node-schedule`).
+- **Execution**: The backend uses `docker exec` to run `pg_dump` directly inside the target `db` container.
+- **Storage**: The resulting SQL stream is piped to a compressed file in `backups/<instance-id>/<timestamp>.sql.gz`.
+- **Direct I/O**: The dump data is streamed directly from the container to the disk, minimizing memory usage on the dashboard server.
+
+### 4. Security & Authentication
+
+- **Dashboard Access**: Protected by JWT authentication independent of the Supabase instances. First-party user management prevents unauthorized infrastructure access.
+- **Instance Security**:
+  - **JWT Secrets**: Unique `HS256` secrets are generated for every instance.
+  - **API Gateway**: The `Kong` container is configured to strip internal headers and enforce CORS, preventing leakage of internal topology.
+  - **Postgres**: The database is not exposed to the public internet by default; it is only accessible via the internal Docker network or the API Gateway.
+
+---
+
+## 📚 Documentation Library
+
+A complete reference of all technical documentation available in this repository.
+
+### 🗺️ Features & Roadmap (`/Markdowns`)
+
+| Document                                              | Description                                             | Status      |
+| :---------------------------------------------------- | :------------------------------------------------------ | :---------- |
+| [**Feature Guide v1.0**](Markdowns/README.md)         | Complete manual for the current production version.     | ✅ Active   |
+| [**Roadmap v1.1**](Markdowns/Readme1_1_feature.md)    | detailed task list for upcoming Q1 2026 release.        | 🚧 Planning |
+| [**Vision v1.2**](Markdowns/Readme1_2_Feature.md)     | Future concepts for Multi-Tenancy and Billing.          | 🔮 Future   |
+| [**Version Overview**](Markdowns/VERSION_OVERVIEW.md) | High-level summary of the update strategy.              | ℹ️ Info     |
+| [**Scripts Reference**](Markdowns/SCRIPTS.md)         | Guide to the maintenance scripts in the root directory. | 🔧 Tech     |
+
+### 🛠️ Deployment & Operations (`/deployment`, `/docs`)
+
+| Document                                       | Description                                              | Context       |
+| :--------------------------------------------- | :------------------------------------------------------- | :------------ |
+| [**Deployment Guide**](deployment/README.md)   | Primary manual for automated server installation.        | 🚀 Production |
+| [**AWS Deployment**](docs/AWS_DEPLOYMENT.md)   | Specific architectural guide for AWS VPC/EC2 setups.     | ☁️ Cloud      |
+| [**Port Reference**](docs/PORT_REFERENCE.md)   | Complete list of all TCP/UDP ports used by the stack.    | 🌐 Network    |
+| [**Realtime Config**](docs/REALTIME_CONFIG.md) | deep dive into WebSocket/Realtime service configuration. | 🔌 Config     |
+
+### 🔍 Maintenance & Support (`/docs`)
+
+| Document                                                  | Description                                             |
+| :-------------------------------------------------------- | :------------------------------------------------------ |
+| [**Troubleshooting**](docs/TROUBLESHOOTING.md)            | Solutions for common Docker, Kong, and Database issues. |
+| [**Cleanup Guide**](Markdowns/CLEANUP_RECOMMENDATIONS.md) | Best practices for removing unused orphans and volumes. |
+
+---
+
+## 🚀 Quick Start & Installation
+
+### One-Line Installation
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Create a new Supabase deployment
-./setup_secure_supabase.sh myproject
-
-# Start the deployment
-cd projects/myproject
-docker compose up -d
+# Download and run the installer
+curl -sSL https://raw.githubusercontent.com/your-org/multibase/main/deployment/install.sh | sudo bash
 ```
 
-### Option 2: Web Dashboard (Visual Management)
+### Manual Installation
 
 ```bash
-# Start the dashboard
-cd dashboard
-./launch.sh
+# 1. Clone the repository
+git clone https://github.com/your-org/multibase.git /opt/multibase
+cd /opt/multibase/deployment
 
-# Access the dashboard
-# Frontend: http://localhost:5173
-# API: http://localhost:3001
+# 2. Make scripts executable
+chmod +x install.sh uninstall.sh
+
+# 3. Run installer
+sudo ./install.sh
 ```
 
-The dashboard provides:
-- Real-time instance monitoring
-- Resource metrics (CPU, memory, disk, network)
-- Log streaming and search
-- Alert rules and notifications
-- Visual instance management
+## What the Installer Does
 
-See [Dashboard Quick Start Guide](dashboard/QUICKSTART.md) for detailed setup instructions.
+1. **Pre-Flight Checks**
 
----
+   - Verifies OS compatibility (Ubuntu/Debian)
+   - Checks available memory and disk space
+   - Prompts for domain name
 
-## Management Options
+2. **Installs Dependencies**
 
-### CLI Tools
-Perfect for automation, scripting, and quick operations:
-- Fast deployment creation
-- Command-line control
-- Integration with CI/CD pipelines
-- See [CLI Reference](#project-management) below
+   - Node.js 20
+   - Docker + Docker Compose
+   - PostgreSQL
+   - Redis
+   - Nginx
+   - Certbot (Let's Encrypt)
 
-### Web Dashboard
-Visual interface for monitoring and operations:
-- Real-time health checks (every 10s)
-- Resource metrics collection (every 15s)
-- Service-level status tracking
-- Log streaming with search
-- Configurable alert rules
-- Instance credentials viewer
+3. **Creates User & Directories**
 
-**Both tools work together** - they manage the same `projects/` directory and can be used interchangeably.
+   - Creates `multibase` system user
+   - Sets up `/opt/multibase` directory structure
 
----
+4. **Database Setup**
 
-## Directory Structure
+   - Creates PostgreSQL database and user
+   - Generates secure credentials
 
-All Supabase deployments are created inside a dedicated `projects/` directory.  
-Each deployment is isolated in its own subdirectory:
+5. **Builds Application**
 
----
+   - Installs npm dependencies
+   - Compiles TypeScript backend
+   - Builds React frontend
+   - Runs database migrations
 
-## File Descriptions
+6. **Configures Services**
 
-- **setup_secure_supabase.sh**: Main setup script. Orchestrates project creation, prompts for credentials, generates keys, and starts Docker Compose.
-- **supabase_manager.py**: Project management CLI. Handles create, start, stop, reset, status, and list commands for deployments.
-- **supabase_setup.py**: Python project generator. Creates the directory structure and all config/template files for a new deployment.
-- **generate_keys.py**: Generates secure API keys and updates the `.env` file for each deployment.
-- **requirements.txt**: Python dependencies required for the management scripts.
-- **sample_security_policies.sql**: Example Row Level Security (RLS) policies for your database.
-- **security_checklist.md**: Security best practices and checklist for your deployment.
-- **vector.yml**: Default Vector logging configuration template.
-- **update_security.py**: (If present) Script for updating security settings or policies.
-- **test_security.py**: (If present) Script for testing security policies or deployment.
-- **README.md**: This documentation file.
-- **.gitignore**: Ensures secrets and environment files in `projects/` are not committed to version control.
+   - Sets up Nginx reverse proxy with WebSocket support
+   - Creates systemd service for backend
+   - Obtains SSL certificate from Let's Encrypt
 
-**Project directories** (under `/projects/<project-name>/`) contain:
-- `docker-compose.yml`, `.env`, `volumes/`, `sample_security_policies.sql`, `security_checklist.md`, and a project-specific `README.md`.
+7. **Creates Admin User**
+   - Generates secure admin password
+   - Creates initial admin account
 
 ---
 
-```
-/projects                    # Supabase deployments (managed by both CLI and Dashboard)
-  /myproject
-    docker-compose.yml
-    .env
-    volumes/
-    sample_security_policies.sql
-    security_checklist.md
-    README.md
+## 📁 Repository Structure
 
-/dashboard                   # Web-based management interface
-  /backend                   # Node.js API + monitoring services
-    /src
-    prisma/                  # Database schema for metrics/logs
-    package.json
-  /frontend                  # React web interface
-    /src
-    package.json
-  launch.sh                  # Start dashboard (backend + frontend + Redis)
-  stop.sh                    # Stop dashboard services
-  status.sh                  # Check dashboard status
-  README.md                  # Comprehensive dashboard documentation
-  QUICKSTART.md              # 5-minute setup guide
-```
-
-**Note:**
-The `projects/` directory is included in `.gitignore` to ensure that secrets and environment files are never committed to version control.
+- **/dashboard**: The unified monorepo for the management UI.
+  - **/backend**: Express.js API, Dockerode logic, SQLite DB.
+  - **/frontend**: React SPA, Shadcn UI components.
+- **/deployment**: Production infrastructure scripts (`install.sh`, `nginx.conf`).
+- **/projects**: The data directory. **Git-Ignored**. Contains all running instances.
+- **/templates**: Blueprints for `docker-compose.yml` and configuration files used during instance creation.
+- **supabase_manager.py**: The legacy but robust CLI tool for scripting.
 
 ---
 
-## Dashboard Features
+## 🔧 CLI Commands (Reference)
 
-The web dashboard provides comprehensive monitoring and management capabilities:
+For headless management, you can bypass the Dashboard and use the Python CLI tools directly.
 
-### Real-Time Monitoring
-- **Health Checks**: Automated health monitoring every 10 seconds for all instances
-- **Metrics Collection**: CPU, memory, disk, and network metrics collected every 15 seconds
-- **Service Status**: Per-container status tracking (Kong, Postgres, Auth, Realtime, Storage, etc.)
-- **WebSocket Updates**: Real-time push notifications for status and metric changes
-
-### Instance Management
-- **Visual Creation**: Create new Supabase instances through an intuitive web form
-- **Lifecycle Control**: Start, stop, restart, and delete instances
-- **Credential Management**: View and regenerate API keys and credentials
-- **Port Management**: Automatic port assignment to avoid conflicts
-
-### Analytics & Insights
-- **System Metrics**: Overall resource usage across all instances
-- **Per-Instance Analytics**: Detailed metrics and historical data for each instance
-- **Service-Level Metrics**: Resource usage broken down by container
-- **Time-Series Visualization**: Interactive charts and gauges
-
-### Logging
-- **Log Streaming**: Real-time log viewing for any service
-- **Search & Filter**: Find log entries by service, time range, or keyword
-- **Log Download**: Export logs for offline analysis
-
-### Alerting
-- **Alert Rules**: Configure thresholds for CPU, memory, disk, and service health
-- **Alert Management**: View, acknowledge, and resolve alerts
-- **Alert History**: Track alert patterns and statistics
-- **Notification System**: Get notified when thresholds are exceeded
-
-### Technical Stack
-**Backend:**
-- Node.js 20+ with TypeScript
-- Express REST API
-- Socket.io for WebSocket
-- Prisma ORM + SQLite (metrics storage)
-- Redis (real-time caching)
-- dockerode (Docker API integration)
-
-**Frontend:**
-- React 19 with TypeScript
-- Vite build tool
-- TailwindCSS + shadcn/ui components
-- Recharts for visualization
-- React Query for data fetching
-
-### Getting Started with Dashboard
-
-**Prerequisites:**
-- Node.js 20+
-- Docker and Docker Compose
-- Redis (auto-started by launch script)
-
-**Installation:**
-```bash
-cd dashboard
-./launch.sh
-```
-
-**Access:**
-- Frontend: http://localhost:5173
-- API: http://localhost:3001
-
-**Documentation:**
-- [Complete Dashboard Guide](dashboard/README.md) - Full API reference and architecture
-- [Quick Start](dashboard/QUICKSTART.md) - 5-minute setup guide
-- [Scripts Reference](dashboard/SCRIPTS.md) - launch.sh, stop.sh, status.sh details
-- [Quick Reference](dashboard/QUICK_REFERENCE.md) - Cheat sheet for daily use
-
----
-
-## CLI Quick Start
-
-### 1. Prerequisites
-
-- Python 3.7+
-- Docker and Docker Compose
-- Python dependencies (install with):
-  ```
-  pip install -r requirements.txt
-  ```
-
-### 2. Create a New Supabase Deployment
-
-Run the setup script from the root directory:
+**Start an instance:**
 
 ```bash
-./setup_secure_supabase.sh <project-name> [base-port]
+python supabase_manager.py start <project_name>
 ```
 
-- You will be prompted for dashboard credentials (username and password).
-- Secure API keys will be generated automatically.
-- All files will be created in `projects/<project-name>/`.
-
-### 3. Start and Manage Your Deployment
+**Create an instance:**
 
 ```bash
-cd projects/<project-name>
-docker compose up -d
+python supabase_manager.py create <project_name>
 ```
 
-To stop services:
+**List all instances:**
 
 ```bash
-docker compose down
+python supabase_manager.py list
 ```
-
----
-
-## Security Model
-
-- **Secrets and environment files** are kept out of version control by default (`projects/` is in `.gitignore`).
-- Each deployment includes:
-  - `security_checklist.md` — follow this for best practices.
-  - `sample_security_policies.sql` — example Row Level Security (RLS) policies.
-- You are prompted to set custom dashboard credentials at setup time.
-- Secure API keys are generated for each deployment.
-
----
-
-## Project Management
-
-- All management commands (`create`, `start`, `stop`, `reset`, `status`, `list`) are available via `supabase_manager.py`.
-- Example:  
-  ```bash
-  python supabase_manager.py list
-  python supabase_manager.py start <project-name>
-  ```
-
----
-
-## Updating and Customizing
-
-- To update a deployment, re-run the setup script or use the management commands.
-- You can customize the generated files in each project directory as needed.
-- For advanced configuration, edit the generated `docker-compose.yml` or `.env` in your project directory.
-
----
-
-## Cloud Deployment
-
-This project supports deployment to various cloud platforms including AWS, Google Cloud, Azure, and generic cloud VMs.
-
-### Quick Start by Platform
-
-#### AWS (EC2 + ALB + RDS + S3)
-```bash
-# 1. Create AWS infrastructure (RDS, S3, ALB, EC2)
-# See: docs/AWS_DEPLOYMENT.md for detailed guide
-
-# 2. Use AWS-specific configuration
-cp .env.aws.example .env
-# Edit .env with your AWS resource details
-
-# 3. Deploy with AWS optimizations
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d
-```
-
-📖 **[Complete AWS Deployment Guide →](docs/AWS_DEPLOYMENT.md)**
-
-#### Generic Cloud VM (DigitalOcean, Linode, Vultr, etc.)
-```bash
-# 1. Create a VM (4GB RAM minimum, 8GB recommended)
-# 2. Install Docker and Docker Compose
-# 3. Clone this repository
-# 4. Run setup script
-./setup_secure_supabase.sh myproject
-
-# 5. Configure for cloud
-# Update .env with your domain and settings
-# Update kong.yml with your CORS origins
-
-# 6. Deploy
-cd projects/myproject
-docker compose up -d
-```
-
-📖 **[Cloud VM Deployment Guide →](docs/CLOUD_VM_DEPLOYMENT.md)** *(coming soon)*
-
-### Service Port Reference
-
-When deploying behind a load balancer (AWS ALB, nginx, Traefik), all traffic should route through **Kong API Gateway on port 8000**.
-
-| Service | Port | Exposed? | Notes |
-|---------|------|----------|-------|
-| **Kong (API Gateway)** | 8000 | ✅ Yes | Main entry point - point your load balancer here |
-| **Studio (Dashboard)** | 3000 | Optional | Admin UI - recommended for internal access only |
-| PostgreSQL | 5432 | No | Use RDS/managed DB for cloud |
-| Pooler | 6543 | Optional | Connection pooling |
-
-**All other services** (Auth, REST, Storage, Realtime, Functions) are internal and accessed through Kong.
-
-📖 **[Complete Port Reference →](docs/PORT_REFERENCE.md)**
-
-### Critical Cloud Configuration
-
-#### 1. CORS Configuration
-For cloud deployments, you MUST configure CORS in `kong.yml` with your actual domains:
-
-```yaml
-# In kong.yml
-- name: cors
-  config:
-    origins:
-      - "https://your-app.com"
-      - "https://staging.your-app.com"
-```
-
-The default `kong.yml` has been updated with comprehensive CORS headers required for all Supabase features.
-
-📖 **[CORS Configuration Guide →](docs/CORS_CONFIGURATION.md)** *(coming soon)*
-
-#### 2. Realtime Container Naming
-
-**Critical:** The Realtime container MUST be named with this pattern:
-```yaml
-realtime:
-  container_name: realtime-dev.{project-name}-realtime
-```
-
-This naming convention is required for Realtime to parse its tenant ID correctly.
-
-📖 **[Realtime Configuration Guide →](docs/REALTIME_CONFIG.md)**
-
-#### 3. Storage with AWS S3
-
-For production deployments, use S3 instead of local file storage:
-
-```bash
-# Use AWS configuration with S3
-docker-compose -f docker-compose.yml -f docker-compose.aws.yml up -d
-
-# Configure in .env:
-STORAGE_BACKEND=s3
-AWS_S3_BUCKET=your-bucket-name
-AWS_REGION=us-east-1
-```
-
-IAM role permissions required for S3 are documented in `.env.aws.example`.
-
-📖 **[S3 Storage Setup Guide →](docs/STORAGE_S3.md)** *(coming soon)*
-
-### Load Balancer Configuration
-
-When using a load balancer (ALB, nginx, Traefik):
-
-1. **Target Kong port 8000** as the backend
-2. **Enable sticky sessions** (required for Realtime WebSocket)
-3. **Health check path:** `/` (Kong returns 404, which is expected)
-4. **SSL/TLS termination** at load balancer (not in Kong)
-
-#### AWS ALB Example
-```
-Target Group:
-  Protocol: HTTP
-  Port: 8000
-  Health Check Path: /
-  Success Codes: 404
-  Stickiness: Enabled (86400 seconds)
-```
-
-### Environment Configuration Files
-
-- **`.env.aws.example`** - AWS deployment with RDS, S3, ALB
-- **`.env.cloud.example`** - Generic cloud VM deployment *(coming soon)*
-- **`docker-compose.aws.yml`** - AWS-specific overrides
-- **`docker-compose.cloud.yml`** - Generic cloud overrides *(coming soon)*
-
-### Troubleshooting Cloud Deployments
-
-Common issues and solutions:
-
-#### Load Balancer Health Checks Failing
-- **Cause:** Security groups, wrong health check path, or Kong not running
-- **Solution:** See [Troubleshooting Guide - Load Balancer Issues](docs/TROUBLESHOOTING.md#load-balancer-issues)
-
-#### Realtime "Tenant not found" Error
-- **Cause:** Incorrect container naming
-- **Solution:** See [Troubleshooting Guide - Realtime Issues](docs/TROUBLESHOOTING.md#realtime-issues)
-
-#### CORS Errors from Frontend
-- **Cause:** Missing or incorrect CORS headers in `kong.yml`
-- **Solution:** See [Troubleshooting Guide - CORS Errors](docs/TROUBLESHOOTING.md#cors-errors)
-
-#### S3 Upload Fails
-- **Cause:** IAM permissions, bucket policy, or misconfiguration
-- **Solution:** See [Troubleshooting Guide - Storage and S3 Issues](docs/TROUBLESHOOTING.md#storage-and-s3-issues)
-
-📖 **[Complete Troubleshooting Guide →](docs/TROUBLESHOOTING.md)**
-
-### Documentation Index
-
-Comprehensive guides for deployment and management:
-
-#### Dashboard Management
-- 📊 **[Dashboard Overview](dashboard/README.md)** - Complete dashboard documentation
-- ⚡ **[Dashboard Quick Start](dashboard/QUICKSTART.md)** - 5-minute setup guide
-- 🔧 **[Scripts Reference](dashboard/SCRIPTS.md)** - launch.sh, stop.sh, status.sh details
-- 📝 **[Quick Reference](dashboard/QUICK_REFERENCE.md)** - Cheat sheet for daily use
-
-#### Core Deployment Guides
-- 📘 **[AWS Deployment Guide](docs/AWS_DEPLOYMENT.md)** - Complete AWS setup (EC2, ALB, RDS, S3)
-- 📗 **[Cloud VM Deployment](docs/CLOUD_VM_DEPLOYMENT.md)** - DigitalOcean, Linode, etc. *(coming soon)*
-- 📙 **[Kubernetes Deployment](docs/KUBERNETES_DEPLOYMENT.md)** - K8s manifests *(coming soon)*
-- 📕 **[ECS Deployment](docs/ECS_DEPLOYMENT.md)** - AWS ECS/Fargate *(coming soon)*
-- 📓 **[Traefik Setup](docs/TRAEFIK_SETUP.md)** - Traefik reverse proxy *(coming soon)*
-
-#### Configuration Guides
-- 📌 **[Port Reference](docs/PORT_REFERENCE.md)** - All service ports and load balancer config
-- 🔧 **[Realtime Configuration](docs/REALTIME_CONFIG.md)** - Container naming and WebSocket setup
-- 🌐 **[CORS Configuration](docs/CORS_CONFIGURATION.md)** - Multi-origin setup *(coming soon)*
-- 💾 **[S3 Storage Setup](docs/STORAGE_S3.md)** - AWS S3 integration *(coming soon)*
-
-#### Operations
-- 🔍 **[Troubleshooting Guide](docs/TROUBLESHOOTING.md)** - Common issues and solutions
-- 📋 **[Security Checklist](security_checklist.md)** - Security best practices
-
----
-
-## Additional Notes
-
-- All persistent data and configuration for each deployment is stored under `projects/<project-name>/volumes/`.
-- The root directory contains only scripts, templates, and documentation — never secrets.
-- For more information on securing your deployment, see `projects/<project-name>/security_checklist.md`.
-
----
-
-## License
-
-See [LICENSE](LICENSE) for details.
