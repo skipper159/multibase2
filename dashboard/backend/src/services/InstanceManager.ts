@@ -1,14 +1,28 @@
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
+import { PrismaClient } from '@prisma/client';
 import yaml from 'js-yaml';
-import { CreateInstanceRequest, SupabaseInstance, InstanceCredentials, PortMapping } from '../types';
+
+import {
+  CreateInstanceRequest,
+  SupabaseInstance,
+  InstanceCredentials,
+  PortMapping,
+} from '../types';
 import { generateAllKeys } from '../utils/keyGenerator';
 import { calculatePorts, getRandomBasePort } from '../utils/portManager';
-import { parseEnvFile, extractCredentials, extractPorts, writeEnvFile, backupEnvFile } from '../utils/envParser';
+import {
+  parseEnvFile,
+  extractCredentials,
+  extractPorts,
+  writeEnvFile,
+  backupEnvFile,
+} from '../utils/envParser';
 import { logger } from '../utils/logger';
 import DockerManager from './DockerManager';
+import { RedisCache } from './RedisCache';
 
 const execAsync = promisify(exec);
 
@@ -16,11 +30,20 @@ export class InstanceManager {
   private projectsPath: string;
   private templatesPath: string;
   private dockerManager: DockerManager;
+  private prisma: PrismaClient;
+  private redisCache?: RedisCache;
 
-  constructor(projectsPath: string, dockerManager: DockerManager) {
+  constructor(
+    projectsPath: string,
+    dockerManager: DockerManager,
+    prisma: PrismaClient,
+    redisCache?: RedisCache
+  ) {
     this.projectsPath = path.resolve(projectsPath);
     this.templatesPath = path.resolve(path.join(projectsPath, '..'));
     this.dockerManager = dockerManager;
+    this.prisma = prisma;
+    this.redisCache = redisCache;
 
     // Ensure projects directory exists
     if (!fs.existsSync(this.projectsPath)) {
@@ -38,9 +61,10 @@ export class InstanceManager {
         return [];
       }
 
-      const projectDirs = fs.readdirSync(this.projectsPath, { withFileTypes: true })
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
+      const projectDirs = fs
+        .readdirSync(this.projectsPath, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory())
+        .map((dirent) => dirent.name);
 
       // Parallelize instance loading for better performance
       const instancePromises = projectDirs.map(async (projectName) => {
@@ -54,7 +78,9 @@ export class InstanceManager {
       });
 
       const results = await Promise.all(instancePromises);
-      const instances = results.filter((instance): instance is SupabaseInstance => instance !== null);
+      const instances = results.filter(
+        (instance): instance is SupabaseInstance => instance !== null
+      );
 
       return instances;
     } catch (error) {
@@ -84,11 +110,11 @@ export class InstanceManager {
       const services = await this.dockerManager.getServiceStatus(name);
 
       // Calculate health status
-      const healthyServices = services.filter(s => s.health === 'healthy').length;
+      const healthyServices = services.filter((s) => s.health === 'healthy').length;
       const totalServices = services.length;
 
       let overallStatus: 'healthy' | 'degraded' | 'unhealthy' | 'stopped' = 'stopped';
-      const runningServices = services.filter(s => s.status === 'running').length;
+      const runningServices = services.filter((s) => s.status === 'running').length;
 
       if (runningServices === 0) {
         overallStatus = 'stopped';
@@ -103,6 +129,49 @@ export class InstanceManager {
       // Get created/updated timestamps from directory stats
       const stats = fs.statSync(projectPath);
 
+      // Get aggregated metrics from Redis if available
+      let metrics;
+      if (this.redisCache) {
+        try {
+          const metricsMap = await this.redisCache.getAllMetrics(name);
+          let totalCpu = 0;
+          let totalMemory = 0;
+          let totalNetworkRx = 0;
+          let totalNetworkTx = 0;
+          let totalDiskRead = 0;
+          let totalDiskWrite = 0;
+          let latestTimestamp = new Date();
+
+          metricsMap.forEach((value) => {
+            if (value) {
+              totalCpu += value.cpu || 0;
+              totalMemory += value.memory || 0;
+              totalNetworkRx += value.networkRx || 0;
+              totalNetworkTx += value.networkTx || 0;
+              totalDiskRead += value.diskRead || 0;
+              totalDiskWrite += value.diskWrite || 0;
+              if (value.timestamp) {
+                latestTimestamp = new Date(value.timestamp);
+              }
+            }
+          });
+
+          if (metricsMap.size > 0) {
+            metrics = {
+              cpu: totalCpu,
+              memory: totalMemory,
+              networkRx: totalNetworkRx,
+              networkTx: totalNetworkTx,
+              diskRead: totalDiskRead,
+              diskWrite: totalDiskWrite,
+              timestamp: latestTimestamp,
+            };
+          }
+        } catch (error) {
+          logger.warn(`Failed to get metrics from Redis for ${name}:`, error);
+        }
+      }
+
       return {
         id: name,
         name,
@@ -115,10 +184,11 @@ export class InstanceManager {
           overall: overallStatus,
           healthyServices,
           totalServices,
-          lastChecked: new Date()
+          lastChecked: new Date(),
         },
+        metrics,
         createdAt: stats.birthtime,
-        updatedAt: stats.mtime
+        updatedAt: stats.mtime,
       };
     } catch (error) {
       logger.error(`Error getting instance ${name}:`, error);
@@ -130,7 +200,7 @@ export class InstanceManager {
    * Create a new Supabase instance
    */
   async createInstance(request: CreateInstanceRequest): Promise<SupabaseInstance> {
-    const { name, basePort, deploymentType, domain, protocol, corsOrigins } = request;
+    const { name, basePort } = request;
 
     logger.info(`Creating new instance: ${name}`);
 
@@ -148,62 +218,96 @@ export class InstanceManager {
     const projectPath = path.join(this.projectsPath, name);
 
     try {
-      // Create project directory
-      fs.mkdirSync(projectPath, { recursive: true });
-      logger.info(`Created project directory: ${projectPath}`);
+      // Use the existing Python setup script instead of custom logic
+      const setupScript = path.join(this.templatesPath, 'supabase_manager.py');
 
-      // Calculate ports
-      const finalBasePort = basePort || getRandomBasePort();
-      const ports = await calculatePorts(finalBasePort);
+      if (!fs.existsSync(setupScript)) {
+        throw new Error(
+          'supabase_manager.py not found. Please ensure it exists in the root directory.'
+        );
+      }
 
-      // Generate secure keys
-      const keys = generateAllKeys();
+      // Build command
+      const args = ['create', name];
+      if (basePort) {
+        args.push('--base-port', basePort.toString());
+      }
 
-      // Determine URLs
-      const projectDomain = domain || 'localhost';
-      const projectProtocol = protocol || (deploymentType === 'localhost' ? 'http' : 'https');
-      const apiExternalUrl = deploymentType === 'localhost'
-        ? `${projectProtocol}://${projectDomain}:${ports.kong_http}`
-        : `${projectProtocol}://${projectDomain}`;
+      logger.info(`Running: python ${setupScript} ${args.join(' ')}`);
 
-      const studioUrl = deploymentType === 'localhost'
-        ? `http://localhost:${ports.studio}`
-        : `https://studio.${projectDomain}`;
+      // Execute the Python script with stdin input
+      const pythonCmd =
+        process.env.PYTHON_PATH || (process.platform === 'win32' ? 'python' : 'python3');
 
-      // Create .env file
-      const envConfig = this.generateEnvConfig(
-        name,
-        ports,
-        keys,
-        apiExternalUrl,
-        studioUrl,
-        corsOrigins || []
-      );
+      const output = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        const child = spawn(pythonCmd, [setupScript, ...args], {
+          cwd: this.templatesPath,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
 
-      const envPath = path.join(projectPath, '.env');
-      writeEnvFile(envPath, envConfig);
+        let stdout = '';
+        let stderr = '';
 
-      // Copy docker-compose template
-      await this.copyDockerComposeTemplate(projectPath, name);
+        child.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
 
-      // Create volumes directory structure
-      this.createVolumesStructure(projectPath, name);
+        child.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
 
-      // Copy Kong configuration
-      await this.createKongConfig(projectPath, apiExternalUrl, corsOrigins || []);
+        child.on('error', (error) => {
+          reject(error);
+        });
 
-      // Copy Vector configuration
-      await this.copyVectorConfig(projectPath, name);
+        child.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`Python script exited with code ${code}\nStderr: ${stderr}`));
+          } else {
+            resolve({ stdout, stderr });
+          }
+        });
 
-      // Create docker-compose.override.yml for Kong YAML parsing
-      await this.createDockerComposeOverride(projectPath);
+        // Send "Y\n" to stdin for localhost question
+        child.stdin.write('Y\n');
+        child.stdin.end();
+      });
 
+      const { stdout, stderr } = output;
+
+      if (stderr && !stderr.includes('Warning')) {
+        logger.warn(`Script warnings: ${stderr}`);
+      }
+
+      logger.info(`Script output: ${stdout}`);
       logger.info(`Successfully created instance: ${name}`);
 
       // Get and return the created instance
       const instance = await this.getInstance(name);
       if (!instance) {
         throw new Error('Failed to retrieve created instance');
+      }
+
+      // Store instance in database for metrics and tracking
+      try {
+        await this.prisma.instance.create({
+          data: {
+            id: name,
+            name: name,
+            status: instance.status,
+            basePort: instance.basePort,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        });
+        logger.info(`Instance ${name} stored in database`);
+      } catch (dbError: any) {
+        // Instance might already exist from previous attempt
+        if (dbError.code === 'P2002') {
+          logger.warn(`Instance ${name} already exists in database`);
+        } else {
+          logger.error(`Error storing instance in database:`, dbError);
+        }
       }
 
       return instance;
@@ -228,9 +332,7 @@ export class InstanceManager {
     studioUrl: string,
     corsOrigins: string[]
   ): Record<string, string> {
-    const corsOriginsStr = corsOrigins.length > 0
-      ? corsOrigins.join(',')
-      : apiExternalUrl;
+    const corsOriginsStr = corsOrigins.length > 0 ? corsOrigins.join(',') : apiExternalUrl;
 
     return {
       // Project Info
@@ -305,7 +407,7 @@ export class InstanceManager {
 
       // Rate Limiting
       RATE_LIMIT_ANON: '100',
-      RATE_LIMIT_AUTHENTICATED: '200'
+      RATE_LIMIT_AUTHENTICATED: '200',
     };
   }
 
@@ -350,10 +452,10 @@ export class InstanceManager {
       'logs',
       'api',
       'pooler',
-      'analytics'
+      'analytics',
     ];
 
-    dirs.forEach(dir => {
+    dirs.forEach((dir) => {
       const fullPath = path.join(volumesPath, dir);
       fs.mkdirSync(fullPath, { recursive: true });
     });
@@ -363,12 +465,9 @@ export class InstanceManager {
     const targetInitPath = path.join(volumesPath, 'db');
 
     if (fs.existsSync(templateInitPath)) {
-      const sqlFiles = fs.readdirSync(templateInitPath).filter(f => f.endsWith('.sql'));
-      sqlFiles.forEach(file => {
-        fs.copyFileSync(
-          path.join(templateInitPath, file),
-          path.join(targetInitPath, file)
-        );
+      const sqlFiles = fs.readdirSync(templateInitPath).filter((f) => f.endsWith('.sql'));
+      sqlFiles.forEach((file) => {
+        fs.copyFileSync(path.join(templateInitPath, file), path.join(targetInitPath, file));
       });
     }
 
@@ -378,7 +477,11 @@ export class InstanceManager {
   /**
    * Create Kong configuration
    */
-  private async createKongConfig(projectPath: string, apiUrl: string, corsOrigins: string[]): Promise<void> {
+  private async createKongConfig(
+    projectPath: string,
+    _apiUrl: string,
+    corsOrigins: string[]
+  ): Promise<void> {
     const templatePath = path.join(this.templatesPath, 'volumes/api/kong.yml');
     const targetPath = path.join(projectPath, 'volumes/api/kong.yml');
 
@@ -392,10 +495,7 @@ export class InstanceManager {
     // Update CORS origins if specified
     if (corsOrigins.length > 0) {
       const originsStr = corsOrigins.join(',');
-      content = content.replace(
-        /origins: .*/,
-        `origins: ${originsStr}`
-      );
+      content = content.replace(/origins: .*/, `origins: ${originsStr}`);
     }
 
     fs.writeFileSync(targetPath, content, 'utf8');
@@ -407,7 +507,7 @@ export class InstanceManager {
    */
   private async copyVectorConfig(projectPath: string, projectName: string): Promise<void> {
     const templatePath = path.join(this.templatesPath, 'vector.yml');
-    const targetPath = path.join(projectPath, 'vector.yml');
+    const targetPath = path.join(projectPath, 'volumes/logs/vector.yml');
 
     if (!fs.existsSync(templatePath)) {
       logger.warn('Vector template not found, skipping');
@@ -416,8 +516,8 @@ export class InstanceManager {
 
     let content = fs.readFileSync(templatePath, 'utf8');
 
-    // Update container names in vector config
-    content = content.replace(/supabase-/g, `${projectName}-`);
+    // Update project name placeholders
+    content = content.replace(/__PROJECT__/g, projectName);
 
     fs.writeFileSync(targetPath, content, 'utf8');
     logger.info('Created Vector configuration');
@@ -534,7 +634,10 @@ services:
   /**
    * Update instance credentials
    */
-  async updateCredentials(name: string, regenerateKeys: boolean = false): Promise<InstanceCredentials> {
+  async updateCredentials(
+    name: string,
+    regenerateKeys: boolean = false
+  ): Promise<InstanceCredentials> {
     const projectPath = path.join(this.projectsPath, name);
     const envPath = path.join(projectPath, '.env');
 
@@ -569,6 +672,196 @@ services:
     } catch (error) {
       logger.error(`Error updating credentials for ${name}:`, error);
       throw error;
+    }
+  }
+  /**
+   * Get system template configuration (parsed docker-compose.yml)
+   */
+  async getSystemTemplate(): Promise<any> {
+    try {
+      const composePath = path.join(this.templatesPath, 'docker-compose.yml');
+      if (!fs.existsSync(composePath)) {
+        throw new Error(`System docker-compose.yml not found at ${composePath}`);
+      }
+
+      const fileContent = fs.readFileSync(composePath, 'utf8');
+      const compose = yaml.load(fileContent) as any;
+
+      // Extract services and their relevant config
+      const services = Object.entries(compose.services || {}).map(
+        ([name, config]: [string, any]) => ({
+          name,
+          image: config.image,
+          environment: config.environment,
+          ports: config.ports,
+          depends_on: config.depends_on,
+        })
+      );
+
+      // Extract unique environment variables used in compose (e.g. ${VAR})
+      const compileEnvVars = (obj: any, vars: Set<string>) => {
+        if (typeof obj === 'string') {
+          const matches = obj.match(/\${([A-Z0-9_]+)(?::-([^}]+))?}/g);
+          if (matches) {
+            matches.forEach((m) => {
+              const varName = m.replace(/^\${|}$/g, '').split(':-')[0];
+              vars.add(varName);
+            });
+          }
+        } else if (typeof obj === 'object' && obj !== null) {
+          Object.values(obj).forEach((v) => compileEnvVars(v, vars));
+        }
+      };
+
+      const envVars = new Set<string>();
+      compileEnvVars(compose, envVars);
+
+      return {
+        services,
+        envVars: Array.from(envVars).sort(),
+        raw: compose,
+      };
+    } catch (error) {
+      logger.error('Error parsing system template:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Apply template configuration to an instance
+   */
+  async applyTemplateConfig(instanceName: string, config: any): Promise<void> {
+    const projectPath = path.join(this.projectsPath, instanceName);
+    const composePath = path.join(projectPath, 'docker-compose.yml');
+    const envPath = path.join(projectPath, '.env');
+
+    logger.info(`Applying template config to ${instanceName}`, { config });
+
+    try {
+      // 1. Apply Environment Overrides
+      if (config.env && Object.keys(config.env).length > 0) {
+        if (fs.existsSync(envPath)) {
+          let envContent = fs.readFileSync(envPath, 'utf8');
+          const envLines = envContent.split('\n');
+          const newEnvLines: string[] = [];
+          const processedKeys = new Set<string>();
+
+          // Update existing keys
+          envLines.forEach((line) => {
+            const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+            if (match) {
+              const key = match[1];
+              if (config.env[key] !== undefined) {
+                newEnvLines.push(`${key}=${config.env[key]}`);
+                processedKeys.add(key);
+              } else {
+                newEnvLines.push(line);
+              }
+            } else {
+              newEnvLines.push(line);
+            }
+          });
+
+          // Add new keys
+          Object.entries(config.env).forEach(([key, value]) => {
+            if (!processedKeys.has(key)) {
+              newEnvLines.push(`${key}=${value}`);
+            }
+          });
+
+          fs.writeFileSync(envPath, newEnvLines.join('\n'), 'utf8');
+          logger.info(`Updated .env for ${instanceName}`);
+        }
+      }
+
+      // 2. Apply Service Selection (Enable/Disable services)
+      // Only filter services if list is explicitly provided AND non-empty
+      if (config.services && Array.isArray(config.services) && config.services.length > 0) {
+        if (fs.existsSync(composePath)) {
+          const fileContent = fs.readFileSync(composePath, 'utf8');
+          const compose = yaml.load(fileContent) as any;
+
+          // If a service list is provided, we assume strictly these services should be enabled
+          // OR we can interpret it as "disabled" list.
+          // Let's assume config.services contains a list of ENABLED services or config objects.
+          // If it's a list of strings, it's enabled services.
+
+          const enabledServices = new Set(
+            config.services.map((s: any) => (typeof s === 'string' ? s : s.name))
+          );
+
+          // We MUST NOT disable core services (db, analytics, auth, kong, rest, storage, meta) unless explicitly requested?
+          // For safety, let's just remove services that are NOT in the enabled list,
+          // BUT only if the list is comprehensive.
+
+          // Actually, a better approach for "Selective Services" in this context is usually adding extra services.
+          // However, if the user wants to DISABLE "studio" or "example-service", they can.
+
+          // Strategy: Filter `compose.services` to only include enabled ones.
+          // CAUTION: This might break dependencies.
+
+          if (compose.services) {
+            Object.keys(compose.services).forEach((serviceName) => {
+              if (!enabledServices.has(serviceName)) {
+                // Check if core service? Maybe not enforce logic here, let user shoot foot.
+                delete compose.services[serviceName];
+              }
+            });
+          }
+
+          const newYaml = yaml.dump(compose);
+          fs.writeFileSync(composePath, newYaml, 'utf8');
+          logger.info(`Updated docker-compose.yml for ${instanceName} (Filtered Services)`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Error applying template config to ${instanceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update instance configuration (env vars)
+   */
+  async updateInstanceConfig(name: string, configUpdates: Record<string, string>): Promise<void> {
+    const instance = await this.getInstance(name);
+    if (!instance) {
+      throw new Error(`Instance ${name} not found`);
+    }
+
+    const projectPath = path.join(this.projectsPath, name);
+    const envPath = path.join(projectPath, '.env');
+
+    if (!fs.existsSync(envPath)) {
+      throw new Error(`Instance configuration not found at ${envPath}`);
+    }
+
+    // Create backup
+    backupEnvFile(envPath);
+
+    // Read current config
+    const currentConfig = parseEnvFile(envPath);
+
+    // Merge updates
+    const newConfig = { ...currentConfig, ...configUpdates };
+
+    // Write back to file
+    writeEnvFile(envPath, newConfig);
+
+    // Restart relevant services to apply changes
+    try {
+      try {
+        await this.dockerManager.restartService(name, 'auth');
+        logger.info(`Restarted auth service for ${name}`);
+      } catch (e) {
+        // Fallback or ignore if auth service is named uniquely, try gotrue
+        await this.dockerManager.restartService(name, 'gotrue');
+        logger.info(`Restarted gotrue service for ${name}`);
+      }
+    } catch (error) {
+      logger.warn(
+        `Could not restart auth service for ${name}. Changes might not apply immediately. Error: ${error}`
+      );
     }
   }
 }

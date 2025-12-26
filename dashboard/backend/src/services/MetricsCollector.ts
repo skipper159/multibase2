@@ -82,14 +82,14 @@ export class MetricsCollector extends EventEmitter {
       let runningCount = 0;
 
       for (const instance of instances) {
-        const instanceMetrics = await this.collectInstanceMetrics(instance.name);
+        // Nur Metriken von laufenden Instanzen sammeln
+        if (instance.status === 'running' || instance.status === 'healthy') {
+          const instanceMetrics = await this.collectInstanceMetrics(instance.name);
 
-        if (instanceMetrics) {
-          totalCpu += instanceMetrics.cpu;
-          totalMemory += instanceMetrics.memory;
-          totalDisk += instanceMetrics.disk;
-
-          if (instance.status === 'running' || instance.status === 'healthy') {
+          if (instanceMetrics && (instanceMetrics.cpu > 0 || instanceMetrics.memory > 0)) {
+            totalCpu += instanceMetrics.cpu;
+            totalMemory += instanceMetrics.memory;
+            totalDisk += instanceMetrics.disk;
             runningCount++;
           }
         }
@@ -97,9 +97,9 @@ export class MetricsCollector extends EventEmitter {
 
       // Store system-wide metrics
       const systemMetrics: SystemMetrics = {
-        totalCpu,
-        totalMemory,
-        totalDisk,
+        totalCpu: isNaN(totalCpu) ? 0 : totalCpu,
+        totalMemory: isNaN(totalMemory) ? 0 : totalMemory,
+        totalDisk: isNaN(totalDisk) ? 0 : totalDisk,
         instanceCount: instances.length,
         runningCount,
         timestamp: new Date()
@@ -161,16 +161,26 @@ export class MetricsCollector extends EventEmitter {
    */
   private async storeMetrics(instanceName: string, serviceName: string, metrics: any): Promise<void> {
     try {
+      // Check if instance exists in database first
+      const instance = await this.prisma.instance.findUnique({
+        where: { id: instanceName }
+      });
+
+      if (!instance) {
+        logger.warn(`Instance ${instanceName} not found in database, skipping metrics storage`);
+        return;
+      }
+
       await this.prisma.metric.create({
         data: {
           instanceId: instanceName,
           service: serviceName,
-          cpu: metrics.cpu,
-          memory: metrics.memory,
-          networkRx: metrics.networkRx,
-          networkTx: metrics.networkTx,
-          diskRead: metrics.diskRead,
-          diskWrite: metrics.diskWrite,
+          cpu: isNaN(metrics.cpu) ? 0 : metrics.cpu,
+          memory: isNaN(metrics.memory) ? 0 : metrics.memory,
+          networkRx: isNaN(metrics.networkRx) ? 0 : metrics.networkRx,
+          networkTx: isNaN(metrics.networkTx) ? 0 : metrics.networkTx,
+          diskRead: isNaN(metrics.diskRead) ? 0 : metrics.diskRead,
+          diskWrite: isNaN(metrics.diskWrite) ? 0 : metrics.diskWrite,
           timestamp: metrics.timestamp
         }
       });

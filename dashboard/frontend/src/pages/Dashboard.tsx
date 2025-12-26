@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { useInstances, useSystemMetrics } from '../hooks/useInstances';
 import { useAlertStats } from '../hooks/useAlerts';
 import { useAuth } from '../contexts/AuthContext';
 import InstanceCard from '../components/InstanceCard';
 import CreateInstanceModal from '../components/CreateInstanceModal';
 import GaugeChart from '../components/charts/GaugeChart';
+import PageHeader from '../components/PageHeader';
 import {
   Loader2,
   Plus,
@@ -16,7 +17,8 @@ import {
   LogOut,
   Users,
   Database,
-  Settings,
+  Key,
+  Mail,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -24,8 +26,19 @@ export default function Dashboard() {
   const { data: alertStats } = useAlertStats();
   const { data: systemMetrics } = useSystemMetrics();
   const { user, logout } = useAuth();
+  const location = useLocation();
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.openCreateModal && location.state?.template) {
+      setSelectedTemplate(location.state.template);
+      setIsCreateModalOpen(true);
+      // Clear state so it doesn't reopen on refresh (optional, but good practice usually involves clearing history state)
+      window.history.replaceState({}, document.title);
+    }
+  }, [location]);
 
   if (isLoading) {
     return (
@@ -55,95 +68,137 @@ export default function Dashboard() {
 
   return (
     <div className='min-h-screen bg-background'>
-      {/* Header */}
-      <header className='border-b border-border bg-card'>
-        <div className='container mx-auto px-6 py-4'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <h1 className='text-3xl font-bold text-foreground'>Multibase Dashboard</h1>
-              <p className='text-muted-foreground mt-1'>Manage your Supabase instances</p>
-            </div>
-            <div className='flex items-center gap-3'>
-              {/* Alert Badge */}
-              <Link
-                to='/alerts'
-                className='relative flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors'
-              >
-                <Bell className='w-4 h-4' />
-                Alerts
-                {alertStats && alertStats.active > 0 && (
-                  <span className='absolute -top-2 -right-2 bg-destructive text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center'>
-                    {alertStats.active}
-                  </span>
-                )}
-              </Link>
+      <PageHeader>
+        <div className='flex items-center justify-between'>
+          <div>
+            <p className='text-muted-foreground mt-1'>Manage your Supabase instances</p>
+          </div>
+          <div className='flex items-center gap-3'>
+            {/* Alert Badge */}
+            <Link
+              to='/alerts'
+              className='relative flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors'
+            >
+              <Bell className='w-4 h-4' />
+              Alerts
+              {alertStats && alertStats.active > 0 && (
+                <span className='absolute -top-2 -right-2 bg-destructive text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center'>
+                  {alertStats.active}
+                </span>
+              )}
+            </Link>
 
+            <Link
+              to='/templates'
+              className='flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors'
+            >
+              <Database className='w-4 h-4' />
+              Templates
+            </Link>
+
+            <button
+              className='flex items-center gap-2 px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary/90 transition-colors'
+              onClick={() => setIsCreateModalOpen(true)}
+            >
+              <Plus className='w-4 h-4' />
+              Create Instance
+            </button>
+
+            {/* User Menu */}
+            <div className='relative'>
               <button
-                className='flex items-center gap-2 px-4 py-2 bg-primary text-white font-medium rounded-md hover:bg-primary/90 transition-colors'
-                onClick={() => setIsCreateModalOpen(true)}
+                className='flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors'
+                onClick={() => setShowUserMenu(!showUserMenu)}
               >
-                <Plus className='w-4 h-4' />
-                Create Instance
+                <div className='w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-semibold'>
+                  {user?.username?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <span className='text-sm text-foreground'>{user?.username}</span>
               </button>
 
-              {/* User Menu */}
-              <div className='relative'>
-                <button
-                  className='flex items-center gap-2 px-4 py-2 bg-secondary border border-border rounded-md hover:bg-muted transition-colors'
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                >
-                  <div className='w-8 h-8 bg-primary rounded-full flex items-center justify-center text-white font-semibold'>
-                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+              {showUserMenu && (
+                <div className='absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg z-50'>
+                  <div className='p-3 border-b border-border'>
+                    <p className='text-sm font-medium text-foreground'>{user?.username}</p>
+                    <p className='text-xs text-muted-foreground'>{user?.email}</p>
+                    <p className='text-xs text-primary mt-1 capitalize'>{user?.role}</p>
                   </div>
-                  <span className='text-sm text-foreground'>{user?.username}</span>
-                </button>
-
-                {showUserMenu && (
-                  <div className='absolute right-0 mt-2 w-56 bg-card border border-border rounded-md shadow-lg z-50'>
-                    <div className='p-3 border-b border-border'>
-                      <p className='text-sm font-medium text-foreground'>{user?.username}</p>
-                      <p className='text-xs text-muted-foreground'>{user?.email}</p>
-                      <p className='text-xs text-primary mt-1 capitalize'>{user?.role}</p>
-                    </div>
-                    <div className='py-1'>
+                  <div className='py-1'>
+                    <Link
+                      to='/backups'
+                      className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      <Database className='w-4 h-4' />
+                      Backup & Restore
+                    </Link>
+                    <Link
+                      to='/api-keys'
+                      className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors'
+                      onClick={() => setShowUserMenu(false)}
+                    >
+                      <Key className='w-4 h-4' />
+                      API Keys
+                    </Link>
+                    {user?.role === 'admin' && (
                       <Link
-                        to='/backups'
+                        to='/activity'
+                        className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        <Activity className='w-4 h-4' />
+                        Activity Log
+                      </Link>
+                    )}
+                    {user?.role === 'admin' && (
+                      <Link
+                        to='/users'
+                        className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        <Users className='w-4 h-4' />
+                        User Management
+                      </Link>
+                    )}
+                    {user?.role === 'admin' && (
+                      <Link
+                        to='/settings/smtp'
+                        className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
+                        onClick={() => setShowUserMenu(false)}
+                      >
+                        <Mail className='w-4 h-4' />
+                        SMTP Settings
+                      </Link>
+                    )}
+                    {user?.role === 'admin' && (
+                      <Link
+                        to='/migrations'
                         className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
                         onClick={() => setShowUserMenu(false)}
                       >
                         <Database className='w-4 h-4' />
-                        Backups
+                        Database Migrations
                       </Link>
-                      {user?.role === 'admin' && (
-                        <Link
-                          to='/users'
-                          className='flex items-center gap-2 px-4 py-2 text-sm text-foreground hover:bg-muted'
-                          onClick={() => setShowUserMenu(false)}
-                        >
-                          <Users className='w-4 h-4' />
-                          User Management
-                        </Link>
-                      )}
-                    </div>
-                    <div className='border-t border-border py-1'>
-                      <button
-                        onClick={() => {
-                          logout();
-                          setShowUserMenu(false);
-                        }}
-                        className='flex items-center gap-2 px-4 py-2 text-sm text-destructive hover:bg-muted w-full text-left'
-                      >
-                        <LogOut className='w-4 h-4' />
-                        Logout
-                      </button>
-                    </div>
+                    )}
                   </div>
-                )}
-              </div>
+                  <div className='border-t border-border py-1'>
+                    <button
+                      onClick={() => {
+                        logout();
+                        setShowUserMenu(false);
+                      }}
+                      className='flex items-center gap-2 px-4 py-2 text-sm text-destructive hover:bg-muted w-full text-left'
+                    >
+                      <LogOut className='w-4 h-4' />
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      </header>
+      </PageHeader>
 
       {/* Main Content */}
       <main className='container mx-auto px-6 py-8'>
@@ -187,8 +242,8 @@ export default function Dashboard() {
                   {instances?.reduce((sum, i) => sum + i.services.length, 0) || 0}
                 </p>
               </div>
-              <div className='w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center'>
-                <svg className='w-6 h-6 text-blue-600' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+              <div className='w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center'>
+                <svg className='w-6 h-6 text-primary' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                   <path
                     strokeLinecap='round'
                     strokeLinejoin='round'
@@ -209,7 +264,7 @@ export default function Dashboard() {
               System Overview
             </h2>
 
-            <div className='grid grid-cols-1 lg:grid-cols-3 gap-8'>
+            <div className='grid grid-cols-1 lg:grid-cols-2 gap-8'>
               {/* Total CPU Gauge */}
               <div className='flex flex-col items-center'>
                 <GaugeChart label='Total CPU Usage' value={systemMetrics.totalCpu} icon={Activity} size='lg' />
@@ -235,26 +290,6 @@ export default function Dashboard() {
                 />
                 <div className='mt-4 text-center'>
                   <p className='text-sm text-muted-foreground'>Combined memory usage</p>
-                </div>
-              </div>
-
-              {/* Instance Status Summary */}
-              <div className='flex flex-col items-center justify-center'>
-                <div className='w-full max-w-xs space-y-4'>
-                  <div className='flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg'>
-                    <span className='text-sm font-medium'>Total Instances</span>
-                    <span className='text-2xl font-bold text-blue-600'>{systemMetrics?.instanceCount ?? 0}</span>
-                  </div>
-                  <div className='flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 rounded-lg'>
-                    <span className='text-sm font-medium'>Running</span>
-                    <span className='text-2xl font-bold text-green-600'>{systemMetrics?.runningCount ?? 0}</span>
-                  </div>
-                  <div className='flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg'>
-                    <span className='text-sm font-medium'>Stopped</span>
-                    <span className='text-2xl font-bold text-gray-600'>
-                      {(systemMetrics.instanceCount ?? 0) - (systemMetrics.runningCount ?? 0)}
-                    </span>
-                  </div>
                 </div>
               </div>
             </div>
@@ -304,7 +339,14 @@ export default function Dashboard() {
       </main>
 
       {/* Create Instance Modal */}
-      <CreateInstanceModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
+      <CreateInstanceModal
+        open={isCreateModalOpen}
+        onOpenChange={(open) => {
+          setIsCreateModalOpen(open);
+          if (!open) setSelectedTemplate(null);
+        }}
+        initialTemplate={selectedTemplate}
+      />
     </div>
   );
 }

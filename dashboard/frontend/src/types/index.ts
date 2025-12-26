@@ -67,6 +67,31 @@ export interface CreateInstanceRequest {
   domain?: string;
   protocol?: 'http' | 'https';
   corsOrigins?: string[];
+  templateId?: number;
+  services?: string[];
+  env?: Record<string, string>;
+}
+
+export interface SystemTemplate {
+  services: {
+    name: string;
+    image?: string;
+    environment?: any;
+    ports?: string[];
+    depends_on?: any;
+  }[];
+  envVars: string[];
+  raw: any;
+}
+
+export interface TemplateConfig {
+  deploymentType: 'localhost' | 'cloud';
+  basePort?: number;
+  domain?: string;
+  protocol?: 'http' | 'https';
+  corsOrigins?: string[];
+  services?: string[];
+  env?: Record<string, string>;
 }
 
 export interface SystemMetrics {
@@ -119,4 +144,43 @@ export interface CreateAlertRuleRequest {
   enabled?: boolean;
   notificationChannels?: string[];
   webhookUrl?: string;
+}
+
+// API Keys
+export interface ApiKey {
+  id: number;
+  userId: number;
+  name: string;
+  keyPrefix: string;
+  scopes: string[]; // e.g. ["instances:read", "*"]
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  usageCount: number;
+  createdAt: string;
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  scopes?: string[];
+  expiresIn?: number; // days
+}
+
+export interface CreateApiKeyResponse extends ApiKey {
+  key: string; // The full key (only returned once)
+  warning: string;
+}
+
+export interface InstanceTemplate {
+  id: number;
+  name: string;
+  description?: string;
+  config: any;
+  isPublic: boolean;
+  createdBy: string;
+  creator?: {
+    id: string;
+    username: string;
+  };
+  createdAt: string;
+  updatedAt: string;
 }

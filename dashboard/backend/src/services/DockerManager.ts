@@ -6,11 +6,25 @@ export class DockerManager {
   private docker: Docker;
 
   constructor(socketPath?: string) {
-    const dockerOptions: Docker.DockerOptions = socketPath
-      ? { socketPath }
-      : process.env.DOCKER_HOST
-      ? { host: process.env.DOCKER_HOST.replace('tcp://', ''), port: 2375 }
-      : { socketPath: '/var/run/docker.sock' };
+    let dockerOptions: Docker.DockerOptions;
+    
+    if (socketPath) {
+      dockerOptions = { socketPath };
+    } else if (process.env.DOCKER_HOST) {
+      const dockerHost = process.env.DOCKER_HOST;
+      if (dockerHost.startsWith('npipe://')) {
+        // Windows named pipe
+        dockerOptions = { socketPath: dockerHost.replace('npipe://', '') };
+      } else if (dockerHost.startsWith('tcp://')) {
+        // TCP connection
+        dockerOptions = { host: dockerHost.replace('tcp://', ''), port: 2375 };
+      } else {
+        dockerOptions = { socketPath: dockerHost };
+      }
+    } else {
+      // Default Unix socket
+      dockerOptions = { socketPath: '/var/run/docker.sock' };
+    }
 
     this.docker = new Docker(dockerOptions);
   }

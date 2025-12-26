@@ -9,33 +9,37 @@ export function createLogsRoutes(dockerManager: DockerManager): Router {
    * GET /api/logs/instances/:name/services/:service
    * Get logs for a specific service
    */
-  router.get('/instances/:name/services/:service', async (req: Request, res: Response) => {
-    try {
-      const { name, service } = req.params;
-      const { tail, since } = req.query;
+  router.get(
+    '/instances/:name/services/:service',
+    async (req: Request, res: Response): Promise<any> => {
+      try {
+        const { name, service } = req.params;
+        const { tail, since } = req.query;
 
-      const containers = await dockerManager.listProjectContainers(name);
-      const container = containers.find(c => {
-        const containerName = c.Names[0].replace('/', '');
-        return containerName.includes(service);
-      });
+        const containers = await dockerManager.listProjectContainers(name);
+        const container = containers.find((c) => {
+          const containerName = c.Names[0].replace('/', '');
+          return containerName.includes(service);
+        });
 
-      if (!container) {
-        return res.status(404).json({ error: `Service ${service} not found` });
+        if (!container) {
+          return res.status(404).json({ error: `Service ${service} not found` });
+        }
+
+        const logs = await dockerManager.getContainerLogs(container.Id, {
+          tail: tail ? parseInt(tail as string, 10) : 100,
+          since: since ? parseInt(since as string, 10) : undefined,
+          timestamps: true,
+        });
+
+        const logLines = logs.split('\n').filter((line) => line.trim());
+        res.json({ logs: logLines });
+      } catch (error) {
+        logger.error(`Error getting logs for ${req.params.name}:${req.params.service}:`, error);
+        res.status(500).json({ error: 'Failed to get logs' });
       }
-
-      const logs = await dockerManager.getContainerLogs(container.Id, {
-        tail: tail ? parseInt(tail as string, 10) : 100,
-        since: since ? parseInt(since as string, 10) : undefined,
-        timestamps: true
-      });
-
-      res.json(logs);
-    } catch (error) {
-      logger.error(`Error getting logs for ${req.params.name}:${req.params.service}:`, error);
-      res.status(500).json({ error: 'Failed to get logs' });
     }
-  });
+  );
 
   /**
    * GET /api/logs/instances/:name
@@ -53,17 +57,17 @@ export function createLogsRoutes(dockerManager: DockerManager): Router {
         const containerName = container.Names[0].replace('/', '');
         const logs = await dockerManager.getContainerLogs(container.Id, {
           tail: tail ? parseInt(tail as string, 10) : 50,
-          timestamps: true
+          timestamps: true,
         });
 
         // Add container label to each log line
-        const lines = logs.split('\n').filter(line => line.trim());
-        lines.forEach(line => {
+        const lines = logs.split('\n').filter((line) => line.trim());
+        lines.forEach((line) => {
           allLogsLines.push(`[${containerName}] ${line}`);
         });
       }
 
-      res.json(allLogsLines.join('\n'));
+      res.json({ logs: allLogsLines });
     } catch (error) {
       logger.error(`Error getting logs for ${req.params.name}:`, error);
       res.status(500).json({ error: 'Failed to get logs' });

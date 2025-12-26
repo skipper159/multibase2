@@ -18,12 +18,14 @@ function CredentialItem({ label, value, icon, isSecret = false }: CredentialItem
   const [isCopied, setIsCopied] = useState(false);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(value);
+    await navigator.clipboard.writeText(value || '');
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
   };
 
-  const displayValue = isSecret && !isRevealed ? '•'.repeat(20) : value;
+  // Ensure we have a value to display
+  const safeValue = value || 'N/A';
+  const displayValue = isSecret && !isRevealed ? '•'.repeat(Math.min(safeValue.length, 40)) : safeValue;
 
   return (
     <div className="border rounded-lg p-4 hover:border-primary/50 transition-colors">

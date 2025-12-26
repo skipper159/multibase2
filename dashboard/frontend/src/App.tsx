@@ -9,6 +9,14 @@ import AlertRules from './pages/AlertRules';
 import Login from './pages/Login';
 import UserManagement from './pages/UserManagement';
 import BackupManagement from './pages/BackupManagement';
+import UserProfile from './pages/UserProfile';
+import NotificationSettings from './pages/NotificationSettings';
+import ActivityLog from './pages/ActivityLog';
+import ApiKeys from './pages/ApiKeys';
+import ApiDocs from './pages/ApiDocs';
+import Templates from './pages/Templates';
+import Migrations from './pages/Migrations';
+import GlobalSmtpSettings from './pages/GlobalSmtpSettings';
 import { useWebSocket } from './hooks/useWebSocket';
 
 // Create React Query client
@@ -76,6 +84,70 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <BackupManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/profile'
+          element={
+            <ProtectedRoute>
+              <UserProfile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/notifications'
+          element={
+            <ProtectedRoute>
+              <NotificationSettings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/api-keys'
+          element={
+            <ProtectedRoute>
+              <ApiKeys />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/api-docs'
+          element={
+            <ProtectedRoute>
+              <ApiDocs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/templates'
+          element={
+            <ProtectedRoute>
+              <Templates />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/migrations'
+          element={
+            <ProtectedRoute requireAdmin>
+              <Migrations />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/activity'
+          element={
+            <ProtectedRoute requireAdmin>
+              <ActivityLog />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path='/settings/smtp'
+          element={
+            <ProtectedRoute requireAdmin>
+              <GlobalSmtpSettings />
             </ProtectedRoute>
           }
         />

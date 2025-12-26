@@ -1,26 +1,17 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  AlertTriangle,
-  Check,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Filter,
-  Settings,
-} from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle, XCircle, Clock, Filter, Settings, ArrowLeft, Bell } from 'lucide-react';
 import { useAlerts, useAlertStats, useAcknowledgeAlert, useResolveAlert } from '../hooks/useAlerts';
 import { Alert } from '../types';
 import { format } from 'date-fns';
+import PageHeader from '../components/PageHeader';
 
 type StatusFilter = 'all' | 'active' | 'acknowledged' | 'resolved';
 
 export default function Alerts() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const { data: stats, isLoading: statsLoading } = useAlertStats();
-  const { data: alerts, isLoading: alertsLoading } = useAlerts(
-    statusFilter !== 'all' ? { status: statusFilter } : {}
-  );
+  const { data: alerts, isLoading: alertsLoading } = useAlerts(statusFilter !== 'all' ? { status: statusFilter } : {});
 
   const acknowledge = useAcknowledgeAlert();
   const resolve = useResolveAlert();
@@ -41,11 +32,11 @@ export default function Alerts() {
   const getStatusIcon = (status: Alert['status']) => {
     switch (status) {
       case 'active':
-        return <XCircle className="w-4 h-4" />;
+        return <XCircle className='w-4 h-4' />;
       case 'acknowledged':
-        return <Clock className="w-4 h-4" />;
+        return <Clock className='w-4 h-4' />;
       case 'resolved':
-        return <CheckCircle className="w-4 h-4" />;
+        return <CheckCircle className='w-4 h-4' />;
       default:
         return null;
     }
@@ -63,97 +54,99 @@ export default function Alerts() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-                <AlertTriangle className="w-8 h-8" />
-                Alerts Center
-              </h1>
-              <p className="text-muted-foreground mt-1">
-                Monitor and manage alerts across all instances
-              </p>
-            </div>
+    <div className='min-h-screen bg-background'>
+      <PageHeader>
+        <div className='flex items-center justify-between'>
+          <div>
+            <Link to='/' className='inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-2'>
+              <ArrowLeft className='w-4 h-4' />
+              Back to Dashboard
+            </Link>
+            <h2 className='text-2xl font-bold text-foreground flex items-center gap-2'>
+              <AlertTriangle className='w-6 h-6' />
+              Alerts Center
+            </h2>
+            <p className='text-muted-foreground mt-1'>Monitor and manage alerts across all instances</p>
+          </div>
+          <div className='flex gap-3'>
             <Link
-              to="/alert-rules"
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+              to='/notifications'
+              className='flex items-center gap-2 px-4 py-2 bg-secondary border border-border text-foreground rounded-md hover:bg-muted transition-colors'
             >
-              <Settings className="w-4 h-4" />
+              <Bell className='w-4 h-4' />
+              Notifications
+            </Link>
+            <Link
+              to='/alert-rules'
+              className='flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors'
+            >
+              <Settings className='w-4 h-4' />
               Manage Rules
             </Link>
           </div>
         </div>
-      </header>
+      </PageHeader>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-8">
+      <main className='container mx-auto px-6 py-8'>
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-card border rounded-lg p-6">
-            <div className="flex items-center justify-between">
+        <div className='grid grid-cols-1 md:grid-cols-4 gap-6 mb-8'>
+          <div className='bg-card border rounded-lg p-6'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className="text-sm text-muted-foreground">Total Alerts</p>
-                <p className="text-3xl font-bold mt-1">
-                  {statsLoading ? '...' : stats?.total || 0}
-                </p>
+                <p className='text-sm text-muted-foreground'>Total Alerts</p>
+                <p className='text-3xl font-bold mt-1'>{statsLoading ? '...' : stats?.total || 0}</p>
               </div>
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
-                <AlertTriangle className="w-6 h-6 text-gray-600" />
+              <div className='w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center'>
+                <AlertTriangle className='w-6 h-6 text-gray-600' />
               </div>
             </div>
           </div>
 
-          <div className="bg-card border rounded-lg p-6">
-            <div className="flex items-center justify-between">
+          <div className='bg-card border rounded-lg p-6'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className="text-sm text-muted-foreground">Active</p>
-                <p className="text-3xl font-bold mt-1 text-red-600">
-                  {statsLoading ? '...' : stats?.active || 0}
-                </p>
+                <p className='text-sm text-muted-foreground'>Active</p>
+                <p className='text-3xl font-bold mt-1 text-red-600'>{statsLoading ? '...' : stats?.active || 0}</p>
               </div>
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <XCircle className="w-6 h-6 text-red-600" />
+              <div className='w-12 h-12 bg-red-100 rounded-full flex items-center justify-center'>
+                <XCircle className='w-6 h-6 text-red-600' />
               </div>
             </div>
           </div>
 
-          <div className="bg-card border rounded-lg p-6">
-            <div className="flex items-center justify-between">
+          <div className='bg-card border rounded-lg p-6'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className="text-sm text-muted-foreground">Acknowledged</p>
-                <p className="text-3xl font-bold mt-1 text-yellow-600">
+                <p className='text-sm text-muted-foreground'>Acknowledged</p>
+                <p className='text-3xl font-bold mt-1 text-yellow-600'>
                   {statsLoading ? '...' : stats?.acknowledged || 0}
                 </p>
               </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <Clock className="w-6 h-6 text-yellow-600" />
+              <div className='w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center'>
+                <Clock className='w-6 h-6 text-yellow-600' />
               </div>
             </div>
           </div>
 
-          <div className="bg-card border rounded-lg p-6">
-            <div className="flex items-center justify-between">
+          <div className='bg-card border rounded-lg p-6'>
+            <div className='flex items-center justify-between'>
               <div>
-                <p className="text-sm text-muted-foreground">Resolved</p>
-                <p className="text-3xl font-bold mt-1 text-green-600">
-                  {statsLoading ? '...' : stats?.resolved || 0}
-                </p>
+                <p className='text-sm text-muted-foreground'>Resolved</p>
+                <p className='text-3xl font-bold mt-1 text-green-600'>{statsLoading ? '...' : stats?.resolved || 0}</p>
               </div>
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center'>
+                <CheckCircle className='w-6 h-6 text-green-600' />
               </div>
             </div>
           </div>
         </div>
 
         {/* Filters */}
-        <div className="bg-card border rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-4">
-            <Filter className="w-5 h-5 text-muted-foreground" />
-            <div className="flex gap-2">
+        <div className='bg-card border rounded-lg p-4 mb-6'>
+          <div className='flex items-center gap-4'>
+            <Filter className='w-5 h-5 text-muted-foreground' />
+            <div className='flex gap-2'>
               {(['all', 'active', 'acknowledged', 'resolved'] as StatusFilter[]).map((status) => (
                 <button
                   key={status}
@@ -172,69 +165,60 @@ export default function Alerts() {
         </div>
 
         {/* Alerts List */}
-        <div className="bg-card border rounded-lg overflow-hidden">
+        <div className='bg-card border rounded-lg overflow-hidden'>
           {alertsLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+            <div className='flex items-center justify-center py-12'>
+              <div className='w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin' />
             </div>
           ) : !alerts || alerts.length === 0 ? (
-            <div className="text-center py-12">
-              <AlertTriangle className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No alerts found</h3>
-              <p className="text-muted-foreground">
-                {statusFilter === 'all'
-                  ? 'No alerts have been triggered yet'
-                  : `No ${statusFilter} alerts`}
+            <div className='text-center py-12'>
+              <AlertTriangle className='w-16 h-16 text-muted-foreground mx-auto mb-4' />
+              <h3 className='text-xl font-semibold mb-2'>No alerts found</h3>
+              <p className='text-muted-foreground'>
+                {statusFilter === 'all' ? 'No alerts have been triggered yet' : `No ${statusFilter} alerts`}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-muted/50">
+            <div className='overflow-x-auto'>
+              <table className='w-full'>
+                <thead className='bg-muted/50'>
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Alert
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Instance
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Rule Type
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Triggered
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className='px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider'>
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y">
+                <tbody className='divide-y'>
                   {alerts.map((alert) => (
-                    <tr key={alert.id} className="hover:bg-muted/30">
-                      <td className="px-6 py-4">
-                        <div className="font-medium">{alert.name}</div>
-                        {alert.message && (
-                          <div className="text-sm text-muted-foreground mt-1">
-                            {alert.message}
-                          </div>
-                        )}
+                    <tr key={alert.id} className='hover:bg-muted/30'>
+                      <td className='px-6 py-4'>
+                        <div className='font-medium'>{alert.name}</div>
+                        {alert.message && <div className='text-sm text-muted-foreground mt-1'>{alert.message}</div>}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <Link
-                          to={`/instances/${alert.instance?.name}`}
-                          className="text-blue-600 hover:underline"
-                        >
+                      <td className='px-6 py-4 whitespace-nowrap'>
+                        <Link to={`/instances/${alert.instance?.name}`} className='text-blue-600 hover:underline'>
                           {alert.instance?.name || alert.instanceId}
                         </Link>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm">{getRuleName(alert.rule)}</span>
+                      <td className='px-6 py-4 whitespace-nowrap'>
+                        <span className='text-sm'>{getRuleName(alert.rule)}</span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className='px-6 py-4 whitespace-nowrap'>
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(
                             alert.status
@@ -244,20 +228,18 @@ export default function Alerts() {
                           {alert.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
-                        {alert.triggeredAt
-                          ? format(new Date(alert.triggeredAt), 'MMM d, HH:mm')
-                          : 'N/A'}
+                      <td className='px-6 py-4 whitespace-nowrap text-sm text-muted-foreground'>
+                        {alert.triggeredAt ? format(new Date(alert.triggeredAt), 'MMM d, HH:mm') : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className='px-6 py-4 whitespace-nowrap text-right text-sm'>
+                        <div className='flex items-center justify-end gap-2'>
                           {alert.status === 'active' && (
                             <button
                               onClick={() => acknowledge.mutate(alert.id)}
                               disabled={acknowledge.isPending}
-                              className="inline-flex items-center gap-1 px-3 py-1 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                              className='inline-flex items-center gap-1 px-3 py-1 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium'
                             >
-                              <Clock className="w-3 h-3" />
+                              <Clock className='w-3 h-3' />
                               Acknowledge
                             </button>
                           )}
@@ -265,9 +247,9 @@ export default function Alerts() {
                             <button
                               onClick={() => resolve.mutate(alert.id)}
                               disabled={resolve.isPending}
-                              className="inline-flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium"
+                              className='inline-flex items-center gap-1 px-3 py-1 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-medium'
                             >
-                              <Check className="w-3 h-3" />
+                              <Check className='w-3 h-3' />
                               Resolve
                             </button>
                           )}

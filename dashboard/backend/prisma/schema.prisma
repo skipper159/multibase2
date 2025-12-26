@@ -9,14 +9,15 @@ datasource db {
 }
 
 model Instance {
-  id          String   @id
-  name        String   @unique
+  id          String      @id
+  name        String      @unique
   basePort    Int
-  status      String   // 'running', 'stopped', 'degraded', 'healthy'
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String      // 'running', 'stopped', 'degraded', 'healthy'
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
   metrics     Metric[]
   alerts      Alert[]
+  alertRules  AlertRule[]
 
   @@index([name])
   @@index([status])
@@ -42,19 +43,19 @@ model Metric {
 model Alert {
   id            Int       @id @default(autoincrement())
   instanceId    String
-  name          String    // Alert rule name
+  name          String    // Alert name (from rule)
   rule          String    // 'service_down', 'high_cpu', 'high_memory', etc.
-  condition     String    // JSON string with condition details
-  threshold     Float?    // Threshold value
-  duration      Int?      // Duration in seconds before triggering
-  enabled       Boolean   @default(true)
   status        String    // 'active', 'acknowledged', 'resolved'
+  message       String?   // Alert message
+  condition     String?   // Restore column to prevent data loss
+  duration      Int?      // Restore column to prevent data loss
+  enabled       Boolean?  // Restore column to prevent data loss
+  notificationChannels String? // Restore column to prevent data loss
+  threshold     Float?    // Restore column to prevent data loss
   triggeredAt   DateTime?
   acknowledgedAt DateTime?
   resolvedAt    DateTime?
-  message       String?   // Alert message
-  notificationChannels String? // JSON array of channels ['browser', 'webhook']
-  webhookUrl    String?   // Webhook URL for notifications
+  metadata      String?   // JSON string with additional data
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   instance      Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
@@ -62,6 +63,24 @@ model Alert {
   @@index([instanceId])
   @@index([status])
   @@index([rule])
+}
+
+model AlertRule {
+  id                   Int       @id @default(autoincrement())
+  instanceId           String
+  name                 String    // Rule name
+  rule                 String    // 'service_down', 'high_cpu', 'high_memory', 'high_disk', 'slow_response'
+  threshold            Float?    // Threshold value (e.g., 80 for 80%)
+  duration             Int?      // Duration in seconds before triggering
+  enabled              Boolean   @default(true)
+  notificationChannels String?   // JSON array of channels ['browser', 'webhook']
+  webhookUrl           String?   // Webhook URL for notifications
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  instance             Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId])
+  @@index([enabled])
 }
 
 model SystemMetric {
@@ -77,17 +96,23 @@ model SystemMetric {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  username      String   @unique
-  passwordHash  String
-  role          String   @default("user") // 'admin', 'user', 'viewer'
-  isActive      Boolean  @default(true)
-  lastLogin     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  sessions      Session[]
-  backups       Backup[]
+  id               String              @id @default(uuid())
+  email            String              @unique
+  username         String              @unique
+  passwordHash     String
+  role             String              @default("user") // 'admin', 'user', 'viewer'
+  isActive         Boolean             @default(true)
+  avatar           String?             // Avatar URL/Path
+  twoFactorEnabled Boolean             @default(false)
+  twoFactorSecret  String?             // TOTP Secret for 2FA
+  lastLogin        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  sessions         Session[]
+  backups          Backup[]
+  auditLogs        AuditLog[]
+  apiKeys          ApiKey[]
+  templates        InstanceTemplate[]
 
   @@index([email])
   @@index([role])
@@ -121,4 +146,139 @@ model Backup {
   @@index([type])
   @@index([instanceId])
   @@index([createdAt])
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      String?  // null for unauthenticated actions (e.g., failed login)
+  action      String   // 'create_instance', 'delete_backup', 'login', 'login_failed', etc.
+  resource    String   // 'instance/test1', 'backup/123', 'user/5', 'auth/login'
+  details     String?  // JSON with additional info (request body, query params)
+  ipAddress   String?
+  userAgent   String?
+  success     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([success])
+}
+
+model ApiKey {
+  id          Int       @id @default(autoincrement())
+  userId      String
+  name        String    // Descriptive name for the key
+  key         String    @unique // Hashed API Key
+  keyPrefix   String    // First 8 characters for identification (e.g., "mb_abc123")
+  scopes      String    // JSON array: ["instances:read", "backups:create", "*"]
+  expiresAt   DateTime?
+  lastUsedAt  DateTime?
+  usageCount  Int       @default(0)
+  createdAt   DateTime  @default(now())
+  
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([key])
+  @@index([userId])
+  @@index([keyPrefix])
+}
+
+model InstanceTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  config      String   // JSON: deploymentType, basePort, corsOrigins, services
+  isPublic    Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  creator     User?    @relation(fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([isPublic])
+  @@index([createdBy])
+}
+
+model BackupSchedule {
+  id           Int       @id @default(autoincrement())
+  instanceId   String    // Instance to backup
+  cronSchedule String    // "0 2 * * *" = daily 02:00
+  type         String    // "full", "database", "instance"
+  retention    Int       @default(7)  // Keep last N backups
+  enabled      Boolean   @default(true)
+  lastRun      DateTime?
+  nextRun      DateTime?
+  lastStatus   String?   // "success", "failed"
+  lastError    String?   // Error message if failed
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([instanceId])
+  @@index([enabled])
+  @@index([nextRun])
+}
+
+model Webhook {
+  id          Int       @id @default(autoincrement())
+  name        String
+  instanceId  String?   // null = all instances
+  source      String    // "github", "gitlab", "custom"
+  secret      String    // Webhook secret for verification
+  events      String    // JSON: ["push", "release", "tag"]
+  enabled     Boolean   @default(true)
+  lastTriggered DateTime?
+  triggerCount Int      @default(0)
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([instanceId])
+  @@index([source])
+  @@index([enabled])
+}
+
+model Deployment {
+  id          Int       @id @default(autoincrement())
+  instanceId  String
+  version     String?   // Git tag, commit hash, or version number
+  status      String    // "pending", "running", "success", "failed", "rolled_back"
+  source      String    // "webhook", "manual", "scheduled"
+  triggeredBy String?   // User ID or "webhook"
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  duration    Int?      // Duration in seconds
+  logs        String?   // Deployment logs
+  error       String?   // Error message if failed
+  rollbackOf  Int?      // ID of deployment this rolled back
+  createdAt   DateTime  @default(now())
+
+  @@index([startedAt])
+}
+
+model MigrationTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  sql         String
+  category    String   @default("custom") // 'system', 'custom'
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([category])
+}
+
+model GlobalSettings {
+  id                Int      @id @default(1)
+  smtp_host         String?
+  smtp_port         Int?     @default(587)
+  smtp_user         String?
+  smtp_pass         String?
+  smtp_sender_name  String?
+  smtp_admin_email  String?
+  updatedAt         DateTime @updatedAt
 }

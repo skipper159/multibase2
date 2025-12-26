@@ -36,8 +36,8 @@ export default function Login() {
       <div className='max-w-md w-full'>
         {/* Logo/Header */}
         <div className='text-center mb-8'>
-          <div className='inline-flex items-center justify-center w-16 h-16 bg-primary rounded-xl mb-4'>
-            <LogIn className='w-8 h-8 text-white' />
+          <div className='flex justify-center mb-4'>
+            <img src='/logo.png' alt='Multibase Logo' className='h-16 w-auto' />
           </div>
           <h1 className='text-3xl font-bold text-foreground'>Multibase Dashboard</h1>
           <p className='text-muted-foreground mt-2'>Sign in to manage your Supabase instances</p>
@@ -105,13 +105,13 @@ export default function Login() {
           </form>
 
           {/* Info */}
-          <div className='mt-6 pt-6 border-t border-border text-center'>
+          {/* <div className='mt-6 pt-6 border-t border-border text-center'>
             <p className='text-sm text-muted-foreground mb-2'>Default credentials:</p>
             <div className='bg-muted rounded-md p-3'>
               <p className='font-mono text-sm text-foreground'>admin@multibase.local</p>
               <p className='font-mono text-sm text-foreground'>admin123</p>
             </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Footer */}

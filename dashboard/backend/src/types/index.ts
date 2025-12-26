@@ -101,6 +101,7 @@ export interface CreateInstanceRequest {
   domain?: string;
   protocol?: 'http' | 'https';
   corsOrigins?: string[];
+  templateId?: number;
 }
 
 export interface UpdateInstanceRequest {
@@ -114,7 +115,13 @@ export interface AlertRule {
   id?: number;
   instanceId: string;
   name: string;
-  rule: 'service_down' | 'high_cpu' | 'high_memory' | 'high_disk' | 'error_rate' | 'connection_count';
+  rule:
+    | 'service_down'
+    | 'high_cpu'
+    | 'high_memory'
+    | 'high_disk'
+    | 'error_rate'
+    | 'connection_count';
   condition: AlertCondition;
   threshold?: number;
   duration?: number; // seconds

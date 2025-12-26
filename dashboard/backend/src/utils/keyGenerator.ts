@@ -10,9 +10,10 @@ export function generateSecureRandom(length: number): string {
 
 /**
  * Generate a secure password
+ * Avoids characters that cause issues in docker-compose .env files: $ ` " \ 
  */
 export function generatePassword(length: number = 32): string {
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*';
+  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#%^&*-_=+';
   let password = '';
   const randomBytes = crypto.randomBytes(length);
 

@@ -1,44 +1,76 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState } from 'react';
-import { useInstance, useStartInstance, useStopInstance, useRestartInstance } from '../hooks/useInstances';
-import { Loader2, ChevronLeft, Play, Square, RotateCw, Server, Activity, BarChart3, FileText, Key } from 'lucide-react';
+import {
+  useInstance,
+  useStartInstance,
+  useStopInstance,
+  useRestartInstance,
+  useDeleteInstance,
+} from '../hooks/useInstances';
+import {
+  Loader2,
+  ChevronLeft,
+  Play,
+  Square,
+  RotateCw,
+  Server,
+  Activity,
+  BarChart3,
+  FileText,
+  Key,
+  Trash2,
+} from 'lucide-react';
 import ServicesTab from '../components/ServicesTab';
 import MetricsTab from '../components/MetricsTab';
 import LogsTab from '../components/LogsTab';
 import CredentialsTab from '../components/CredentialsTab';
+import ConfigTab from '../components/ConfigTab';
+import DeleteInstanceModal from '../components/DeleteInstanceModal';
+import PageHeader from '../components/PageHeader';
+import { toast } from 'sonner';
 
-type TabType = 'services' | 'metrics' | 'logs' | 'credentials';
+type TabType = 'services' | 'metrics' | 'logs' | 'credentials' | 'config';
 
 export default function InstanceDetail() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('services');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const { data: instance, isLoading, error } = useInstance(name!);
   const startMutation = useStartInstance();
   const stopMutation = useStopInstance();
   const restartMutation = useRestartInstance();
+  const deleteMutation = useDeleteInstance();
+
+  const handleDelete = async (removeVolumes: boolean) => {
+    try {
+      await deleteMutation.mutateAsync({ name: instance!.name, removeVolumes });
+      toast.success(`Instance ${instance!.name} deleted successfully`);
+      navigate('/');
+    } catch (error) {
+      toast.error(`Deletion failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className='flex items-center justify-center min-h-screen'>
+        <Loader2 className='w-8 h-8 animate-spin text-primary' />
       </div>
     );
   }
 
   if (error || !instance) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <Server className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Instance not found</h2>
-          <p className="text-muted-foreground mb-4">
-            The instance "{name}" could not be found
-          </p>
+      <div className='flex items-center justify-center min-h-screen'>
+        <div className='text-center'>
+          <Server className='w-12 h-12 text-muted-foreground mx-auto mb-4' />
+          <h2 className='text-xl font-semibold mb-2'>Instance not found</h2>
+          <p className='text-muted-foreground mb-4'>The instance "{name}" could not be found</p>
           <Link
-            to="/"
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 inline-block"
+            to='/'
+            className='px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 inline-block'
           >
             Back to Dashboard
           </Link>
@@ -65,98 +97,95 @@ export default function InstanceDetail() {
     { id: 'metrics' as TabType, label: 'Metrics', icon: BarChart3 },
     { id: 'logs' as TabType, label: 'Logs', icon: FileText },
     { id: 'credentials' as TabType, label: 'Credentials', icon: Key },
+    { id: 'config' as TabType, label: 'Config', icon: Key },
   ];
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center gap-4 mb-4">
-            <button
-              onClick={() => navigate('/')}
-              className="p-2 hover:bg-muted rounded-md transition-colors"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <div className="flex-1">
-              <div className="flex items-center gap-3">
-                <Server className="w-6 h-6 text-primary" />
-                <h1 className="text-2xl font-bold">{instance.name}</h1>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getHealthColor(instance.health.overall)}`}>
-                  {instance.health.overall}
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {instance.credentials.project_url}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => restartMutation.mutate(instance.name)}
-                disabled={restartMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 rounded-md transition-colors disabled:opacity-50"
+    <div className='min-h-screen bg-background'>
+      <PageHeader>
+        <div className='flex items-center gap-4 mb-4'>
+          <button onClick={() => navigate('/')} className='p-2 hover:bg-muted rounded-md transition-colors'>
+            <ChevronLeft className='w-5 h-5' />
+          </button>
+          <div className='flex-1'>
+            <div className='flex items-center gap-3'>
+              <Server className='w-6 h-6 text-primary' />
+              <h2 className='text-2xl font-bold'>{instance.name}</h2>
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-medium border ${getHealthColor(
+                  instance.health.overall
+                )}`}
               >
-                <RotateCw className={`w-4 h-4 ${restartMutation.isPending ? 'animate-spin' : ''}`} />
-                {restartMutation.isPending ? 'Restarting...' : 'Restart'}
-              </button>
-              {instance.status === 'running' || instance.health.overall === 'healthy' ? (
-                <button
-                  onClick={() => stopMutation.mutate(instance.name)}
-                  disabled={stopMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md transition-colors disabled:opacity-50"
-                >
-                  <Square className="w-4 h-4" />
-                  {stopMutation.isPending ? 'Stopping...' : 'Stop'}
-                </button>
-              ) : (
-                <button
-                  onClick={() => startMutation.mutate(instance.name)}
-                  disabled={startMutation.isPending}
-                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md transition-colors disabled:opacity-50"
-                >
-                  <Play className="w-4 h-4" />
-                  {startMutation.isPending ? 'Starting...' : 'Start'}
-                </button>
-              )}
+                {instance.health.overall}
+              </span>
             </div>
+            <p className='text-sm text-muted-foreground mt-1'>{instance.credentials.project_url}</p>
           </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-background rounded-lg p-4 border">
-              <p className="text-xs text-muted-foreground mb-1">Services</p>
-              <p className="text-2xl font-bold">
-                {instance.health.healthyServices}/{instance.health.totalServices}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">Healthy</p>
-            </div>
-            {instance.metrics && (
-              <>
-                <div className="bg-background rounded-lg p-4 border">
-                  <p className="text-xs text-muted-foreground mb-1">CPU Usage</p>
-                  <p className="text-2xl font-bold">{instance.metrics.cpu.toFixed(1)}%</p>
-                </div>
-                <div className="bg-background rounded-lg p-4 border">
-                  <p className="text-xs text-muted-foreground mb-1">Memory</p>
-                  <p className="text-2xl font-bold">{(instance.metrics.memory / 1024).toFixed(1)} GB</p>
-                </div>
-                <div className="bg-background rounded-lg p-4 border">
-                  <p className="text-xs text-muted-foreground mb-1">Network</p>
-                  <p className="text-2xl font-bold">
-                    {((instance.metrics.networkRx + instance.metrics.networkTx) / 1024 / 1024).toFixed(1)} MB/s
-                  </p>
-                </div>
-              </>
+          <div className='flex gap-2'>
+            <button
+              onClick={() => restartMutation.mutate(instance.name)}
+              disabled={restartMutation.isPending}
+              className='flex items-center gap-2 px-4 py-2 bg-muted hover:bg-muted/80 rounded-md transition-colors disabled:opacity-50'
+            >
+              <RotateCw className={`w-4 h-4 ${restartMutation.isPending ? 'animate-spin' : ''}`} />
+              {restartMutation.isPending ? 'Restarting...' : 'Restart'}
+            </button>
+            {instance.status === 'running' || instance.health.overall === 'healthy' ? (
+              <button
+                onClick={() => stopMutation.mutate(instance.name)}
+                disabled={stopMutation.isPending}
+                className='flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md transition-colors disabled:opacity-50'
+              >
+                <Square className='w-4 h-4' />
+                {stopMutation.isPending ? 'Stopping...' : 'Stop'}
+              </button>
+            ) : (
+              <button
+                onClick={() => startMutation.mutate(instance.name)}
+                disabled={startMutation.isPending}
+                className='flex items-center gap-2 px-4 py-2 bg-green-600 text-white hover:bg-green-700 rounded-md transition-colors disabled:opacity-50'
+              >
+                <Play className='w-4 h-4' />
+                {startMutation.isPending ? 'Starting...' : 'Start'}
+              </button>
             )}
           </div>
         </div>
-      </header>
+
+        {/* Stats */}
+        <div className='grid grid-cols-4 gap-4'>
+          <div className='bg-background rounded-lg p-4 border'>
+            <p className='text-xs text-muted-foreground mb-1'>Services</p>
+            <p className='text-2xl font-bold'>
+              {instance.health.healthyServices}/{instance.health.totalServices}
+            </p>
+            <p className='text-xs text-muted-foreground mt-1'>Healthy</p>
+          </div>
+          {instance.metrics && (
+            <>
+              <div className='bg-background rounded-lg p-4 border'>
+                <p className='text-xs text-muted-foreground mb-1'>CPU Usage</p>
+                <p className='text-2xl font-bold'>{instance.metrics.cpu.toFixed(1)}%</p>
+              </div>
+              <div className='bg-background rounded-lg p-4 border'>
+                <p className='text-xs text-muted-foreground mb-1'>Memory</p>
+                <p className='text-2xl font-bold'>{(instance.metrics.memory / 1024).toFixed(1)} GB</p>
+              </div>
+              <div className='bg-background rounded-lg p-4 border'>
+                <p className='text-xs text-muted-foreground mb-1'>Network</p>
+                <p className='text-2xl font-bold'>
+                  {((instance.metrics.networkRx + instance.metrics.networkTx) / 1024 / 1024).toFixed(1)} MB/s
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+      </PageHeader>
 
       {/* Tabs */}
-      <div className="border-b bg-card">
-        <div className="container mx-auto px-6">
-          <div className="flex gap-1">
+      <div className='border-b bg-card'>
+        <div className='container mx-auto px-6'>
+          <div className='flex gap-1'>
             {tabs.map((tab) => {
               const Icon = tab.icon;
               return (
@@ -169,7 +198,7 @@ export default function InstanceDetail() {
                       : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className='w-4 h-4' />
                   {tab.label}
                 </button>
               );
@@ -179,12 +208,45 @@ export default function InstanceDetail() {
       </div>
 
       {/* Tab Content */}
-      <main className="container mx-auto px-6 py-6">
+      <main className='container mx-auto px-6 py-6'>
         {activeTab === 'services' && <ServicesTab instance={instance} />}
         {activeTab === 'metrics' && <MetricsTab instance={instance} />}
         {activeTab === 'logs' && <LogsTab instance={instance} />}
         {activeTab === 'credentials' && <CredentialsTab instance={instance} />}
+        {activeTab === 'config' && <ConfigTab instance={instance} />}
+
+        {/* Delete Instance Section */}
+        <div className='mt-12 pt-8 border-t border-border'>
+          <div className='bg-destructive/5 border border-destructive/20 rounded-lg p-6'>
+            <div className='flex items-start justify-between'>
+              <div>
+                <h3 className='text-lg font-semibold text-destructive flex items-center gap-2'>
+                  <Trash2 className='w-5 h-5' />
+                  Danger Zone
+                </h3>
+                <p className='mt-2 text-sm text-muted-foreground'>
+                  Deleting this instance cannot be undone. All containers will be stopped and removed.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className='flex items-center gap-2 px-4 py-2 bg-destructive text-white rounded-md hover:bg-destructive/90 transition-colors'
+              >
+                <Trash2 className='w-4 h-4' />
+                Delete Instance
+              </button>
+            </div>
+          </div>
+        </div>
       </main>
+
+      {/* Delete Modal */}
+      <DeleteInstanceModal
+        instance={instance}
+        open={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

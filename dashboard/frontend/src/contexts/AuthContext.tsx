@@ -6,6 +6,8 @@ export interface User {
   username: string;
   role: 'admin' | 'user' | 'viewer';
   isActive: boolean;
+  avatar?: string;
+  twoFactorEnabled?: boolean;
   lastLogin?: string;
   createdAt: string;
 }
@@ -14,11 +16,15 @@ export interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
+  loginWith2FA: (email: string, password: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   register: (email: string, username: string, password: string) => Promise<void>;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
   isAdmin: boolean;
   loading: boolean;
+  requires2FA: boolean;
+  pending2FAEmail: string | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,6 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [pending2FAEmail, setPending2FAEmail] = useState<string | null>(null);
 
   // Load token from localStorage on mount
   useEffect(() => {
@@ -136,15 +144,66 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Login with 2FA
+  const loginWith2FA = async (email: string, password: string, code: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login-2fa`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, code }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || '2FA login failed');
+      }
+
+      const data = await response.json();
+      const { user: userData, session } = data;
+
+      setUser(userData);
+      setToken(session.token);
+      setRequires2FA(false);
+      setPending2FAEmail(null);
+      localStorage.setItem('auth_token', session.token);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Refresh user data from server
+  const refreshUser = async () => {
+    if (!token) return;
+    try {
+      const response = await fetch(`${API_URL}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      }
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+    }
+  };
+
   const value: AuthContextType = {
     user,
     token,
     login,
+    loginWith2FA,
     logout,
     register,
+    refreshUser,
     isAuthenticated: !!user && !!token,
     isAdmin: user?.role === 'admin',
     loading,
+    requires2FA,
+    pending2FAEmail,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

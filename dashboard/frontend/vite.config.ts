@@ -33,13 +33,14 @@ export default defineConfig({
     port: FRONTEND_PORT,
     cors: true,
     allowedHosts: ['mission.smartpi.ai', 'localhost', '192.168.1.3', 'host.docker.internal'],
-    // HMR configuration for nginx reverse proxy
-    // Browser auto-detects host, connects via WSS on port 443
-    // Server binds locally, nginx proxies WebSocket connections
-    hmr: {
-      protocol: 'wss',
-      clientPort: 443,
-    },
+    // HMR configuration for nginx reverse proxy (only in production)
+    // Disabled for local development
+    ...(process.env.NODE_ENV === 'production' && {
+      hmr: {
+        protocol: 'wss',
+        clientPort: 443,
+      },
+    }),
     proxy: {
       '/api': {
         target: BACKEND_URL,

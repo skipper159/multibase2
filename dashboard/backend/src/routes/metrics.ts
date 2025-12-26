@@ -22,13 +22,16 @@ export function createMetricsRoutes(
 
       const metrics = await metricsCollector.getSystemMetricsHistory(sinceDate, limitNum);
       // Return the latest metric (last in array) for current system state
-      const latestMetric = metrics.length > 0 ? metrics[metrics.length - 1] : {
-        totalCpu: 0,
-        totalMemory: 0,
-        instanceCount: 0,
-        runningCount: 0,
-        timestamp: new Date()
-      };
+      const latestMetric =
+        metrics.length > 0
+          ? metrics[metrics.length - 1]
+          : {
+              totalCpu: 0,
+              totalMemory: 0,
+              instanceCount: 0,
+              runningCount: 0,
+              timestamp: new Date(),
+            };
       res.json(latestMetric);
     } catch (error) {
       logger.error('Error getting system metrics:', error);
@@ -64,9 +67,18 @@ export function createMetricsRoutes(
   router.get('/instances/:name/history', async (req: Request, res: Response) => {
     try {
       const { name } = req.params;
-      const { service, since, limit } = req.query;
+      const { service, since, limit, hours } = req.query;
 
-      const sinceDate = since ? new Date(since as string) : undefined;
+      let sinceDate: Date | undefined;
+      
+      // Support both 'hours' and 'since' parameters
+      if (hours) {
+        const hoursNum = parseFloat(hours as string);
+        sinceDate = new Date(Date.now() - hoursNum * 60 * 60 * 1000);
+      } else if (since) {
+        sinceDate = new Date(since as string);
+      }
+
       const limitNum = limit ? parseInt(limit as string, 10) : 100;
 
       const metrics = await metricsCollector.getHistoricalMetrics(
@@ -87,21 +99,24 @@ export function createMetricsRoutes(
    * GET /api/metrics/instances/:name/services/:service
    * Get metrics for a specific service
    */
-  router.get('/instances/:name/services/:service', async (req: Request, res: Response) => {
-    try {
-      const { name, service } = req.params;
-      const metrics = await redisCache.getMetrics(name, service);
+  router.get(
+    '/instances/:name/services/:service',
+    async (req: Request, res: Response): Promise<any> => {
+      try {
+        const { name, service } = req.params;
+        const metrics = await redisCache.getMetrics(name, service);
 
-      if (!metrics) {
-        return res.status(404).json({ error: 'Metrics not found' });
+        if (!metrics) {
+          return res.status(404).json({ error: 'Metrics not found' });
+        }
+
+        res.json(metrics);
+      } catch (error) {
+        logger.error(`Error getting metrics for ${req.params.name}:${req.params.service}:`, error);
+        res.status(500).json({ error: 'Failed to get service metrics' });
       }
-
-      res.json(metrics);
-    } catch (error) {
-      logger.error(`Error getting metrics for ${req.params.name}:${req.params.service}:`, error);
-      res.status(500).json({ error: 'Failed to get service metrics' });
     }
-  });
+  );
 
   return router;
 }

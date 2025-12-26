@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { instancesApi, healthApi, metricsApi, logsApi } from '../lib/api';
 import type { CreateInstanceRequest } from '../types';
+import { toast } from 'sonner';
 
 // Query keys
 export const instanceKeys = {
@@ -133,8 +134,12 @@ export const useStartInstance = () => {
   return useMutation({
     mutationFn: (name: string) => instancesApi.start(name),
     onSuccess: (_, name) => {
+      toast.success(`Instance ${name} started successfully`);
       queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
       queryClient.invalidateQueries({ queryKey: instanceKeys.lists() });
+    },
+    onError: (error: any, name) => {
+      toast.error(error.message || `Failed to start ${name}`);
     },
   });
 };
@@ -146,8 +151,12 @@ export const useStopInstance = () => {
   return useMutation({
     mutationFn: (name: string) => instancesApi.stop(name),
     onSuccess: (_, name) => {
+      toast.success(`Instance ${name} stopped successfully`);
       queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
       queryClient.invalidateQueries({ queryKey: instanceKeys.lists() });
+    },
+    onError: (error: any, name) => {
+      toast.error(error.message || `Failed to stop ${name}`);
     },
   });
 };
@@ -159,8 +168,12 @@ export const useRestartInstance = () => {
   return useMutation({
     mutationFn: (name: string) => instancesApi.restart(name),
     onSuccess: (_, name) => {
+      toast.success(`Instance ${name} restarted successfully`);
       queryClient.invalidateQueries({ queryKey: instanceKeys.detail(name) });
       queryClient.invalidateQueries({ queryKey: instanceKeys.lists() });
+    },
+    onError: (error: any, name) => {
+      toast.error(error.message || `Failed to restart ${name}`);
     },
   });
 };

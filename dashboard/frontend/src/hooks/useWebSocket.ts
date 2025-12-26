@@ -4,6 +4,10 @@ import { useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useQueryClient } from '@tanstack/react-query';
 import { instanceKeys } from './useInstances';
+import { toast } from 'sonner';
+
+// Use backend URL for WebSocket connection
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export const useWebSocket = () => {
   const socketRef = useRef<Socket | null>(null);
@@ -17,8 +21,8 @@ export const useWebSocket = () => {
     }
     initializedRef.current = true;
 
-    // Connect to Socket.io
-    const socket = io({
+    // Connect to Socket.io backend
+    const socket = io(SOCKET_URL, {
       path: '/socket.io/',
       transports: ['websocket', 'polling'],
     });
@@ -57,10 +61,10 @@ export const useWebSocket = () => {
     socket.on('health:update', (event: { instanceName: string }) => {
       if (event.instanceName) {
         queryClient.invalidateQueries({
-          queryKey: instanceKeys.detail(event.instanceName)
+          queryKey: instanceKeys.detail(event.instanceName),
         });
         queryClient.invalidateQueries({
-          queryKey: instanceKeys.health(event.instanceName)
+          queryKey: instanceKeys.health(event.instanceName),
         });
       }
       queryClient.invalidateQueries({ queryKey: instanceKeys.lists() });
@@ -70,7 +74,7 @@ export const useWebSocket = () => {
     socket.on('metrics:update', (metrics: { instanceName: string }) => {
       if (metrics.instanceName) {
         queryClient.invalidateQueries({
-          queryKey: instanceKeys.metrics(metrics.instanceName)
+          queryKey: instanceKeys.metrics(metrics.instanceName),
         });
       }
     });
@@ -78,7 +82,16 @@ export const useWebSocket = () => {
     // Alert triggered
     socket.on('alert:triggered', (alert: any) => {
       console.log('Alert triggered:', alert);
-      // Could show a notification here
+      toast.error(`Alert Triggered: ${alert.name}`, {
+        description: `${alert.message} (${alert.instance?.name || 'Unknown Instance'})`,
+        duration: 10000, // Show for 10 seconds
+        action: {
+          label: 'View',
+          onClick: () => (window.location.href = '/alerts'),
+        },
+      });
+      // Invalidate queries to show new alert in lists/stats
+      queryClient.invalidateQueries({ queryKey: ['alerts'] });
     });
 
     // Cleanup: Don't disconnect the socket

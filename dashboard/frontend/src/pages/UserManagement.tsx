@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Plus, Trash2, Shield, Eye, User as UserIcon, ArrowLeft } from 'lucide-react';
+import { Users, Plus, Trash2, Shield, Eye, User as UserIcon, ArrowLeft, Edit, Key, ShieldOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
+import PageHeader from '../components/PageHeader';
 
 interface User {
   id: string;
@@ -10,15 +11,19 @@ interface User {
   username: string;
   role: 'admin' | 'user' | 'viewer';
   isActive: boolean;
+  twoFactorEnabled?: boolean;
   lastLogin?: string;
   createdAt: string;
 }
 
 export default function UserManagement() {
-  const { token } = useAuth();
+  const { token, user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [resetPasswordUser, setResetPasswordUser] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -100,6 +105,84 @@ export default function UserManagement() {
     }
   };
 
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          username: editingUser.username,
+          email: editingUser.email,
+          role: editingUser.role,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update user');
+      }
+
+      toast.success('User updated successfully');
+      setEditingUser(null);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Failed to update user');
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPasswordUser || !newPassword) return;
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/users/${resetPasswordUser.id}/password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ password: newPassword }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reset password');
+      }
+
+      toast.success('Password reset successfully');
+      setResetPasswordUser(null);
+      setNewPassword('');
+    } catch (error) {
+      toast.error('Failed to reset password');
+    }
+  };
+
+  const handleReset2FA = async (userId: string, username: string) => {
+    if (!window.confirm(`Are you sure you want to disable 2FA for ${username}? They will need to set it up again.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/auth/users/${userId}/2fa`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to reset 2FA');
+      }
+
+      toast.success(`2FA disabled for ${username}`);
+      fetchUsers();
+    } catch (error) {
+      toast.error('Failed to reset 2FA');
+    }
+  };
+
   const getRoleIcon = (role: string) => {
     switch (role) {
       case 'admin':
@@ -136,31 +219,28 @@ export default function UserManagement() {
 
   return (
     <div className='min-h-screen bg-background'>
-      {/* Header */}
-      <header className='border-b bg-card'>
-        <div className='container mx-auto px-6 py-4'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <Link to='/' className='inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-2'>
-                <ArrowLeft className='w-4 h-4' />
-                Back to Dashboard
-              </Link>
-              <h1 className='text-3xl font-bold text-foreground flex items-center gap-2'>
-                <Users className='w-8 h-8' />
-                User Management
-              </h1>
-              <p className='text-muted-foreground mt-1'>Manage dashboard users and permissions</p>
-            </div>
-            <button
-              onClick={() => setIsCreating(!isCreating)}
-              className='flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors'
-            >
-              <Plus className='w-4 h-4' />
-              {isCreating ? 'Cancel' : 'Add User'}
-            </button>
+      <PageHeader>
+        <div className='flex items-center justify-between'>
+          <div>
+            <Link to='/' className='inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-2'>
+              <ArrowLeft className='w-4 h-4' />
+              Back to Dashboard
+            </Link>
+            <h2 className='text-2xl font-bold text-foreground flex items-center gap-2'>
+              <Users className='w-6 h-6' />
+              User Management
+            </h2>
+            <p className='text-muted-foreground mt-1'>Manage dashboard users and permissions</p>
           </div>
+          <button
+            onClick={() => setIsCreating(!isCreating)}
+            className='flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors'
+          >
+            <Plus className='w-4 h-4' />
+            {isCreating ? 'Cancel' : 'Add User'}
+          </button>
         </div>
-      </header>
+      </PageHeader>
 
       <main className='container mx-auto px-6 py-8'>
         {/* Create Form */}
@@ -170,49 +250,49 @@ export default function UserManagement() {
             <form onSubmit={handleSubmit} className='space-y-4'>
               <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                 <div>
-                  <label className='block text-sm font-medium mb-1'>
-                    Email <span className='text-red-500'>*</span>
+                  <label className='block text-sm font-medium text-foreground mb-1'>
+                    Email <span className='text-destructive'>*</span>
                   </label>
                   <input
                     type='email'
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     required
-                    className='w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary'
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
                   />
                 </div>
                 <div>
-                  <label className='block text-sm font-medium mb-1'>
-                    Username <span className='text-red-500'>*</span>
+                  <label className='block text-sm font-medium text-foreground mb-1'>
+                    Username <span className='text-destructive'>*</span>
                   </label>
                   <input
                     type='text'
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                     required
-                    className='w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary'
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
                   />
                 </div>
                 <div>
-                  <label className='block text-sm font-medium mb-1'>
-                    Password <span className='text-red-500'>*</span>
+                  <label className='block text-sm font-medium text-foreground mb-1'>
+                    Password <span className='text-destructive'>*</span>
                   </label>
                   <input
                     type='password'
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
-                    className='w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary'
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
                   />
                 </div>
                 <div>
-                  <label className='block text-sm font-medium mb-1'>
-                    Role <span className='text-red-500'>*</span>
+                  <label className='block text-sm font-medium text-foreground mb-1'>
+                    Role <span className='text-destructive'>*</span>
                   </label>
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                    className='w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary'
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
                   >
                     <option value='viewer'>Viewer</option>
                     <option value='user'>User</option>
@@ -253,7 +333,13 @@ export default function UserManagement() {
                 <tr key={user.id} className='hover:bg-muted/50'>
                   <td className='px-6 py-4'>
                     <div>
-                      <div className='font-medium'>{user.username}</div>
+                      {currentUser?.id === user.id ? (
+                        <Link to='/profile' className='font-medium text-primary hover:underline'>
+                          {user.username}
+                        </Link>
+                      ) : (
+                        <span className='font-medium text-foreground'>{user.username}</span>
+                      )}
                       <div className='text-sm text-muted-foreground'>{user.email}</div>
                     </div>
                   </td>
@@ -280,19 +366,146 @@ export default function UserManagement() {
                     {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
                   </td>
                   <td className='px-6 py-4 text-right'>
-                    <button
-                      onClick={() => handleDelete(user.id)}
-                      className='text-red-600 hover:text-red-800'
-                      title='Delete user'
-                    >
-                      <Trash2 className='w-4 h-4' />
-                    </button>
+                    <div className='flex items-center justify-end gap-2'>
+                      <button
+                        onClick={() => setEditingUser(user)}
+                        className='text-primary hover:text-primary/80'
+                        title='Edit user'
+                      >
+                        <Edit className='w-4 h-4' />
+                      </button>
+                      <button
+                        onClick={() => setResetPasswordUser(user)}
+                        className='text-yellow-600 hover:text-yellow-800'
+                        title='Reset password'
+                      >
+                        <Key className='w-4 h-4' />
+                      </button>
+                      {user.twoFactorEnabled && currentUser?.id !== user.id && (
+                        <button
+                          onClick={() => handleReset2FA(user.id, user.username)}
+                          className='text-purple-600 hover:text-purple-800'
+                          title='Disable 2FA'
+                        >
+                          <ShieldOff className='w-4 h-4' />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleDelete(user.id)}
+                        className='text-destructive hover:text-destructive/80'
+                        title='Delete user'
+                      >
+                        <Trash2 className='w-4 h-4' />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* Edit User Modal */}
+        {editingUser && (
+          <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
+            <div className='bg-card border rounded-lg p-6 w-full max-w-md'>
+              <h2 className='text-xl font-semibold mb-4'>Edit User</h2>
+              <form onSubmit={handleEdit} className='space-y-4'>
+                <div>
+                  <label className='block text-sm font-medium text-foreground mb-1'>Email</label>
+                  <input
+                    type='email'
+                    value={editingUser.email}
+                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                    required
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
+                  />
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-foreground mb-1'>Username</label>
+                  <input
+                    type='text'
+                    value={editingUser.username}
+                    onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })}
+                    required
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
+                  />
+                </div>
+                <div>
+                  <label className='block text-sm font-medium text-foreground mb-1'>Role</label>
+                  <select
+                    value={editingUser.role}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as any })}
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
+                  >
+                    <option value='viewer'>Viewer</option>
+                    <option value='user'>User</option>
+                    <option value='admin'>Admin</option>
+                  </select>
+                </div>
+                <div className='flex gap-3 pt-4'>
+                  <button
+                    type='button'
+                    onClick={() => setEditingUser(null)}
+                    className='flex-1 px-4 py-2 border border-border rounded-md hover:bg-secondary'
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type='submit'
+                    className='flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90'
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Reset Password Modal */}
+        {resetPasswordUser && (
+          <div className='fixed inset-0 bg-black/50 flex items-center justify-center z-50'>
+            <div className='bg-card border rounded-lg p-6 w-full max-w-md'>
+              <h2 className='text-xl font-semibold mb-4'>Reset Password</h2>
+              <p className='text-sm text-muted-foreground mb-4'>
+                Set new password for <strong>{resetPasswordUser.username}</strong>
+              </p>
+              <form onSubmit={handleResetPassword} className='space-y-4'>
+                <div>
+                  <label className='block text-sm font-medium text-foreground mb-1'>New Password</label>
+                  <input
+                    type='password'
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    className='w-full px-3 py-2 border border-border rounded-md focus:ring-2 focus:ring-primary bg-input text-foreground'
+                    placeholder='Enter new password (min 6 characters)'
+                  />
+                </div>
+                <div className='flex gap-3 pt-4'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setResetPasswordUser(null);
+                      setNewPassword('');
+                    }}
+                    className='flex-1 px-4 py-2 border border-border rounded-md hover:bg-secondary'
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type='submit'
+                    className='flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90'
+                  >
+                    Reset Password
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

@@ -85,25 +85,68 @@ import { serve } from "https://deno.land/std@0.131.0/http/server.ts";
 serve((_req) => new Response("Hello from Edge Functions!"));
 """)
 
-        # Write template files
-        (self.project_dir / "docker-compose.yml").write_text(self.templates["docker_compose"])
-        (self.project_dir / ".env").write_text(self.templates["env"])
-        (self.project_dir / "volumes/api/kong.yml").write_text(self.templates["kong"])
+        # Write template files with Unix line endings for cross-platform compatibility
+        self._write_with_unix_newlines(self.project_dir / "docker-compose.yml", self.templates["docker_compose"])
+        self._write_with_unix_newlines(self.project_dir / ".env", self.templates["env"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/api/kong.yml", self.templates["kong"])
         # Create docker-compose.override.yml to fix Kong YAML parsing issues
         self._create_docker_compose_override()
         self._write_vector_config()  # Use the dynamic vector config method
-        (self.project_dir / "volumes/pooler/pooler.exs").write_text(self.templates["pooler"])
-        (self.project_dir / "volumes/db/_supabase.sql").write_text(self.templates["supabase_sql"])
-        (self.project_dir / "volumes/db/logs.sql").write_text(self.templates["logs_sql"])
-        (self.project_dir / "volumes/db/jwt.sql").write_text(self.templates["jwt_sql"])
-        (self.project_dir / "volumes/db/pooler.sql").write_text(self.templates["pooler_sql"])
-        (self.project_dir / "volumes/db/realtime.sql").write_text(self.templates["realtime_sql"])
-        (self.project_dir / "volumes/db/roles.sql").write_text(self.templates["roles_sql"])
-        (self.project_dir / "volumes/db/webhooks.sql").write_text(self.templates["webhooks_sql"])
+        # CRITICAL: pooler.exs MUST have Unix line endings on Windows or container will crash
+        self._write_with_unix_newlines(self.project_dir / "volumes/pooler/pooler.exs", self.templates["pooler"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/_supabase.sql", self.templates["supabase_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/logs.sql", self.templates["logs_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/jwt.sql", self.templates["jwt_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/pooler.sql", self.templates["pooler_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/realtime.sql", self.templates["realtime_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/roles.sql", self.templates["roles_sql"])
+        self._write_with_unix_newlines(self.project_dir / "volumes/db/webhooks.sql", self.templates["webhooks_sql"])
         # Write to index.ts file inside the main directory, not to the directory itself
         (self.project_dir / "volumes/functions/main/index.ts").write_text(self.templates["function_main"])
         (self.project_dir / "reset.sh").write_text(self.templates["reset_script"])
         (self.project_dir / "README.md").write_text(self.templates["readme"])
+        
+        # Fix Realtime healthcheck for Windows compatibility
+        self._fix_realtime_healthcheck()
+        
+    def _write_with_unix_newlines(self, path, content):
+        """Write file with Unix line endings (LF only) for cross-platform compatibility."""
+        # Convert any CRLF to LF
+        content = content.replace('\r\n', '\n')
+        # Write with binary mode to avoid automatic line ending conversion
+        path.write_bytes(content.encode('utf-8'))
+    
+    def _fix_realtime_healthcheck(self):
+        """Fix Realtime healthcheck to use /status endpoint instead of authenticated endpoint."""
+        compose_file = self.project_dir / "docker-compose.yml"
+        content = compose_file.read_text()
+        
+        # Replace the old healthcheck with the new one
+        old_healthcheck = '''    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-sSfL",
+          "--head",
+          "-o",
+          "/dev/null",
+          "-H",
+          "Authorization: Bearer ${ANON_KEY}",
+          "http://localhost:4000/api/tenants/realtime-dev/health"
+        ]'''
+        
+        new_healthcheck = '''    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sSfL http://localhost:4000/status"
+        ]'''
+        
+        if old_healthcheck in content:
+            content = content.replace(old_healthcheck, new_healthcheck)
+            self._write_with_unix_newlines(compose_file, content)
+            print("Fixed Realtime healthcheck for Windows compatibility")
         
     def _create_docker_compose_override(self):
         """Create docker-compose.override.yml to fix Kong YAML parsing issues."""

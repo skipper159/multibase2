@@ -13,6 +13,8 @@ import InstanceManager from './services/InstanceManager';
 import HealthMonitor from './services/HealthMonitor';
 import MetricsCollector from './services/MetricsCollector';
 import { RedisCache } from './services/RedisCache';
+import { startAlertMonitor } from './services/AlertMonitorService';
+import SchedulerService from './services/SchedulerService';
 
 // Routes
 import { createInstanceRoutes } from './routes/instances';
@@ -22,6 +24,15 @@ import { createLogsRoutes } from './routes/logs';
 import { createAlertRoutes } from './routes/alerts';
 import { createAuthRoutes } from './routes/auth';
 import { createBackupRoutes } from './routes/backups';
+import { createProxyRoutes } from './routes/proxy';
+import { createAuditRoutes } from './routes/audit';
+import { createApiKeyRoutes } from './routes/apiKeys';
+import { createTemplateRoutes } from './routes/templates';
+import { createScheduleRoutes } from './routes/schedules';
+import { createNotificationRoutes } from './routes/notifications';
+import { createSettingsRoutes } from './routes/settings';
+import { createMigrationRoutes } from './routes/migrations';
+import { createDeploymentsRoutes } from './routes/deployments';
 
 // Utils
 import { logger } from './utils/logger';
@@ -57,22 +68,37 @@ const io = new SocketIOServer(httpServer, {
 });
 
 // Middleware
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+  })
+);
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Static file serving for uploads (avatars)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+import { apiKeyAuth } from './middleware/apiKeyAuth';
+
+// ...
+
 // Request logging
-app.use((req, res, next) => {
+app.use((req, _res, next) => {
   logger.info(`${req.method} ${req.path}`);
   next();
 });
+
+// API Key Authentication (Passive)
+app.use(apiKeyAuth);
 
 // Initialize services
 const prisma = new PrismaClient();
 const dockerManager = new DockerManager(DOCKER_SOCKET_PATH);
 const redisCache = new RedisCache();
-const instanceManager = new InstanceManager(PROJECTS_PATH, dockerManager);
+const instanceManager = new InstanceManager(PROJECTS_PATH, dockerManager, prisma, redisCache);
 const healthMonitor = new HealthMonitor(
   dockerManager,
   instanceManager,
@@ -88,16 +114,25 @@ const metricsCollector = new MetricsCollector(
 );
 
 // API Routes
-app.use('/api/instances', createInstanceRoutes(instanceManager, dockerManager));
+app.use('/api/instances', createInstanceRoutes(instanceManager, dockerManager, prisma));
 app.use('/api/metrics', createMetricsRoutes(metricsCollector, redisCache));
-app.use('/api/health', createHealthRoutes(healthMonitor));
+app.use('/api/health', createHealthRoutes(healthMonitor, prisma, redisCache, dockerManager));
 app.use('/api/logs', createLogsRoutes(dockerManager));
 app.use('/api/alerts', createAlertRoutes());
 app.use('/api/auth', createAuthRoutes());
 app.use('/api/backups', createBackupRoutes());
+app.use('/api/proxy', createProxyRoutes(instanceManager));
+app.use('/api/audit', createAuditRoutes());
+app.use('/api/keys', createApiKeyRoutes());
+app.use('/api/templates', createTemplateRoutes(instanceManager));
+app.use('/api/schedules', createScheduleRoutes());
+app.use('/api/notifications', createNotificationRoutes());
+app.use('/api/settings', createSettingsRoutes());
+app.use('/api/migrations', createMigrationRoutes());
+app.use('/api/deployments', createDeploymentsRoutes());
 
 // Health check endpoint for the dashboard itself
-app.get('/api/ping', async (req, res) => {
+app.get('/api/ping', async (_req, res) => {
   try {
     const dockerOk = await dockerManager.ping();
     const redisOk = await redisCache.ping();
@@ -120,7 +155,7 @@ app.get('/api/ping', async (req, res) => {
 });
 
 // Root endpoint
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.json({
     name: 'Multibase Dashboard API',
     version: '1.0.0',
@@ -224,6 +259,12 @@ async function startServices() {
     // Start metrics collection
     metricsCollector.start();
 
+    // Start alert monitoring (checks rules every 60s)
+    startAlertMonitor();
+
+    // Start backup scheduler
+    SchedulerService.start();
+
     logger.info('Background services started successfully');
   } catch (error) {
     logger.error('Error starting services:', error);
@@ -237,6 +278,7 @@ async function shutdown() {
 
   healthMonitor.stop();
   metricsCollector.stop();
+  SchedulerService.stop();
 
   await redisCache.close();
   await prisma.$disconnect();
@@ -257,7 +299,7 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 // Error handlers
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });

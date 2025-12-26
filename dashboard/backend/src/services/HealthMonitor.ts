@@ -1,12 +1,13 @@
 import { EventEmitter } from 'events';
 import { HealthStatus } from '../types';
-import DockerManager from './DockerManager';
+// import DockerManager from './DockerManager'; // Reserved for future use
 import InstanceManager from './InstanceManager';
 import { RedisCache } from './RedisCache';
 import { logger } from '../utils/logger';
 
 export class HealthMonitor extends EventEmitter {
-  private dockerManager: DockerManager;
+  // Reserved for future direct container health checks
+  // private dockerManager: DockerManager;
   private instanceManager: InstanceManager;
   private redisCache: RedisCache;
   private interval: NodeJS.Timeout | null = null;
@@ -14,13 +15,13 @@ export class HealthMonitor extends EventEmitter {
   private isRunning: boolean = false;
 
   constructor(
-    dockerManager: DockerManager,
+    _dockerManager: unknown, // Reserved for future use
     instanceManager: InstanceManager,
     redisCache: RedisCache,
     checkInterval: number = 10000
   ) {
     super();
-    this.dockerManager = dockerManager;
+    // this.dockerManager = dockerManager;
     this.instanceManager = instanceManager;
     this.redisCache = redisCache;
     this.checkInterval = checkInterval;
@@ -105,10 +106,12 @@ export class HealthMonitor extends EventEmitter {
           instanceName,
           previous: previousStatus.overall,
           current: health.overall,
-          timestamp: new Date()
+          timestamp: new Date(),
         });
 
-        logger.info(`Health status changed for ${instanceName}: ${previousStatus.overall} -> ${health.overall}`);
+        logger.info(
+          `Health status changed for ${instanceName}: ${previousStatus.overall} -> ${health.overall}`
+        );
 
         // Emit alert if status degraded
         if (health.overall === 'unhealthy' || health.overall === 'degraded') {
@@ -117,7 +120,7 @@ export class HealthMonitor extends EventEmitter {
             type: 'health_degraded',
             message: `Instance ${instanceName} health is ${health.overall}`,
             severity: health.overall === 'unhealthy' ? 'critical' : 'warning',
-            timestamp: new Date()
+            timestamp: new Date(),
           });
         }
       }
@@ -130,7 +133,7 @@ export class HealthMonitor extends EventEmitter {
         overall: 'unhealthy',
         healthyServices: 0,
         totalServices: 0,
-        lastChecked: new Date()
+        lastChecked: new Date(),
       };
 
       return errorHealth;
