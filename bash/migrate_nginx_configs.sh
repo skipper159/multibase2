@@ -87,10 +87,21 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --projects-dir)
-            PROJECTS_DIR="$2"
+            # Validate argument exists
+            if [ -z "$2" ]; then
+                echo "Error: Missing argument for --projects-dir"
+                usage
+            fi
+            # Try to resolve to absolute path, keep original if it doesn't exist yet
+            PROJECTS_DIR="$(cd "$2" 2>/dev/null && pwd)" || PROJECTS_DIR="$2"
             shift 2
             ;;
         --nginx-dir)
+            # Validate argument exists
+            if [ -z "$2" ]; then
+                echo "Error: Missing argument for --nginx-dir"
+                usage
+            fi
             NGINX_DIR="$2"
             shift 2
             ;;
@@ -147,9 +158,19 @@ get_port_from_env() {
     local port_var="$2"
     local default="$3"
     
+    # Validate port_var name (only alphanumeric and underscore allowed)
+    if ! [[ "$port_var" =~ ^[A-Z0-9_]+$ ]]; then
+        log_error "Invalid port variable name: $port_var"
+        echo "$default"
+        return
+    fi
+    
     if [ -f "$env_file" ]; then
-        local value=$(grep "^${port_var}=" "$env_file" | cut -d'=' -f2 | tr -d '[:space:]')
-        if [ -n "$value" ]; then
+        # Use grep to safely extract the value
+        local value=$(grep "^${port_var}=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '[:space:]' | tr -d '"' | tr -d "'")
+        
+        # Validate that value is a number
+        if [ -n "$value" ] && [[ "$value" =~ ^[0-9]+$ ]]; then
             echo "$value"
         else
             echo "$default"
@@ -319,6 +340,13 @@ EOF
 migrate_instance() {
     local instance_dir="$1"
     local instance_name="$(basename "$instance_dir")"
+    
+    # Validate instance name (only alphanumeric, hyphens, and underscores)
+    if ! [[ "$instance_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        log_warning "Invalid instance name: ${instance_name} (contains unsafe characters), skipping..."
+        return 1
+    fi
+    
     local env_file="${instance_dir}/.env"
     
     log_info "Processing instance: ${instance_name}"
@@ -380,12 +408,36 @@ main() {
     fi
     
     # Check permissions
-    check_permissions
+    if ! check_permissions; then
+        exit 1
+    fi
+    
+    # Check sudo access if needed for nginx/certbot operations
+    if [ "$DRY_RUN" = false ] && { [ "$SKIP_RELOAD" = false ] || [ "$SKIP_SSL" = false ]; }; then
+        if ! sudo -n true 2>/dev/null; then
+            log_warning "This script requires sudo access to reload Nginx and run Certbot"
+            log_info "You may be prompted for your password, or configure passwordless sudo"
+        fi
+    fi
     
     # Count instances
     local instance_count=0
     local success_count=0
     local failed_count=0
+    
+    # Check if projects directory has any subdirectories
+    local has_instances=false
+    for item in "$PROJECTS_DIR"/*; do
+        if [ -d "$item" ]; then
+            has_instances=true
+            break
+        fi
+    done
+    
+    if [ "$has_instances" = false ]; then
+        log_warning "No instance directories found in ${PROJECTS_DIR}"
+        exit 0
+    fi
     
     # Process each instance directory
     for instance_dir in "$PROJECTS_DIR"/*; do
