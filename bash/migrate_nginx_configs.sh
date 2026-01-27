@@ -500,6 +500,13 @@ main() {
         for instance_dir in "$PROJECTS_DIR"/*; do
             if [ -d "$instance_dir" ]; then
                 local instance_name="$(basename "$instance_dir")"
+                
+                # Validate instance name (same validation as migrate_instance)
+                if ! [[ "$instance_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                    log_warning "  Skipping SSL for ${instance_name} (invalid name)"
+                    continue
+                fi
+                
                 local env_file="${instance_dir}/.env"
                 
                 if [ -f "$env_file" ]; then
