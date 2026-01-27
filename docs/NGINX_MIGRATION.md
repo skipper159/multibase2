@@ -4,7 +4,7 @@ This guide explains how to migrate existing Supabase instance Nginx configuratio
 
 ## Background
 
-The Multibase dashboard now includes authentication features for Supabase instances. New instances automatically get Nginx configurations with `auth_request` directives that protect access to the Studio UI and API endpoints.
+The Multibase dashboard now supports authentication features for Supabase instances. New instances automatically get Nginx configurations with `auth_request` directives that protect access to the Studio UI and API endpoints.
 
 However, instances created before this feature was added don't have these authentication configurations. This migration script updates existing instance Nginx configs to include the authentication layer.
 
@@ -167,7 +167,7 @@ The script automatically backs up existing configs before updating:
 
 ```
 /path/to/nginx/sites-enabled/instance-name.conf
-→ /path/to/nginx/sites-enabled/instance-name.conf.backup.20260127_120000
+→ /path/to/nginx/sites-enabled/instance-name.conf.backup.YYYYMMDD_HHMMSS
 ```
 
 ### Manual Rollback

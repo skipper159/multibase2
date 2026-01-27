@@ -127,8 +127,17 @@ check_permissions() {
         return 0
     fi
     
-    if [ ! -w "$NGINX_DIR" ] 2>/dev/null && [ ! -d "$NGINX_DIR" ]; then
-        log_warning "Nginx directory doesn't exist yet or not writable. Will attempt to create it."
+    # Check if nginx directory exists
+    if [ ! -d "$NGINX_DIR" ]; then
+        log_warning "Nginx directory doesn't exist yet. Will attempt to create it."
+        return 0
+    fi
+    
+    # Check if nginx directory is writable
+    if [ ! -w "$NGINX_DIR" ]; then
+        log_error "Nginx directory is not writable: ${NGINX_DIR}"
+        log_info "You may need to run this script with sudo or adjust permissions"
+        return 1
     fi
 }
 
@@ -403,15 +412,28 @@ main() {
     if [ "$DRY_RUN" = false ] && [ "$SKIP_RELOAD" = false ] && [ $success_count -gt 0 ]; then
         echo ""
         log_info "Reloading Nginx to apply changes..."
-        if sudo nginx -t 2>&1; then
-            if sudo nginx -s reload 2>&1; then
+        
+        # Test configuration first
+        nginx_test_output=$(sudo nginx -t 2>&1)
+        nginx_test_exit=$?
+        
+        if [ $nginx_test_exit -eq 0 ]; then
+            log_success "Nginx configuration test passed"
+            
+            # Reload nginx
+            nginx_reload_output=$(sudo nginx -s reload 2>&1)
+            nginx_reload_exit=$?
+            
+            if [ $nginx_reload_exit -eq 0 ]; then
                 log_success "Nginx reloaded successfully"
             else
                 log_error "Failed to reload Nginx"
+                log_error "Output: ${nginx_reload_output}"
                 log_warning "Please check the Nginx error logs and reload manually"
             fi
         else
             log_error "Nginx configuration test failed"
+            log_error "Output: ${nginx_test_output}"
             log_warning "Please check the configuration files and fix any errors"
             exit 1
         fi
@@ -434,11 +456,15 @@ main() {
                     
                     log_info "  Setting up SSL for: ${studio_domain} and ${api_domain}"
                     
-                    if sudo certbot --nginx -d "$studio_domain" -d "$api_domain" \
-                        --non-interactive --agree-tos --redirect --email "$CERTBOT_EMAIL" 2>&1; then
+                    certbot_output=$(sudo certbot --nginx -d "$studio_domain" -d "$api_domain" \
+                        --non-interactive --agree-tos --redirect --email "$CERTBOT_EMAIL" 2>&1)
+                    certbot_exit=$?
+                    
+                    if [ $certbot_exit -eq 0 ]; then
                         log_success "  SSL configured for ${instance_name}"
                     else
                         log_warning "  SSL setup failed for ${instance_name} (can be configured manually later)"
+                        log_info "  Certbot output: ${certbot_output}"
                     fi
                 fi
             fi
