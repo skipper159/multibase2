@@ -92,8 +92,12 @@ while [[ $# -gt 0 ]]; do
                 echo "Error: Missing argument for --projects-dir"
                 usage
             fi
-            # Try to resolve to absolute path, keep original if it doesn't exist yet
-            PROJECTS_DIR="$(cd "$2" 2>/dev/null && pwd)" || PROJECTS_DIR="$2"
+            # Resolve to absolute path if directory exists
+            if [ -d "$2" ]; then
+                PROJECTS_DIR="$(realpath "$2" 2>/dev/null)" || PROJECTS_DIR="$2"
+            else
+                PROJECTS_DIR="$2"
+            fi
             shift 2
             ;;
         --nginx-dir)
@@ -166,8 +170,8 @@ get_port_from_env() {
     fi
     
     if [ -f "$env_file" ]; then
-        # Use grep to safely extract the value
-        local value=$(grep "^${port_var}=" "$env_file" 2>/dev/null | cut -d'=' -f2 | tr -d '[:space:]' | tr -d '"' | tr -d "'")
+        # Use grep with -F for literal matching to avoid regex issues
+        local value=$(grep -F "${port_var}=" "$env_file" 2>/dev/null | head -n1 | cut -d'=' -f2 | tr -d '[:space:]' | tr -d '"' | tr -d "'")
         
         # Validate that value is a number
         if [ -n "$value" ] && [[ "$value" =~ ^[0-9]+$ ]]; then
@@ -493,41 +497,47 @@ main() {
     
     # Run Certbot for SSL if not skipped
     if [ "$DRY_RUN" = false ] && [ "$SKIP_SSL" = false ] && [ $success_count -gt 0 ]; then
-        echo ""
-        log_info "Setting up SSL certificates with Certbot..."
-        log_warning "This may take a few minutes..."
-        
-        for instance_dir in "$PROJECTS_DIR"/*; do
-            if [ -d "$instance_dir" ]; then
-                local instance_name="$(basename "$instance_dir")"
-                
-                # Validate instance name (same validation as migrate_instance)
-                if ! [[ "$instance_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-                    log_warning "  Skipping SSL for ${instance_name} (invalid name)"
-                    continue
-                fi
-                
-                local env_file="${instance_dir}/.env"
-                
-                if [ -f "$env_file" ]; then
-                    local studio_domain="${instance_name}.${DOMAIN}"
-                    local api_domain="${instance_name}-api.${DOMAIN}"
+        # Validate CERTBOT_EMAIL format
+        if ! [[ "$CERTBOT_EMAIL" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
+            log_error "Invalid email format for CERTBOT_EMAIL: ${CERTBOT_EMAIL}"
+            log_warning "Skipping SSL setup. Please update CERTBOT_EMAIL in the script."
+        else
+            echo ""
+            log_info "Setting up SSL certificates with Certbot..."
+            log_warning "This may take a few minutes..."
+            
+            for instance_dir in "$PROJECTS_DIR"/*; do
+                if [ -d "$instance_dir" ]; then
+                    instance_name="$(basename "$instance_dir")"
                     
-                    log_info "  Setting up SSL for: ${studio_domain} and ${api_domain}"
+                    # Validate instance name (same validation as migrate_instance)
+                    if ! [[ "$instance_name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                        log_warning "  Skipping SSL for ${instance_name} (invalid name)"
+                        continue
+                    fi
                     
-                    certbot_output=$(sudo certbot --nginx -d "$studio_domain" -d "$api_domain" \
-                        --non-interactive --agree-tos --redirect --email "$CERTBOT_EMAIL" 2>&1)
-                    certbot_exit=$?
+                    env_file="${instance_dir}/.env"
                     
-                    if [ $certbot_exit -eq 0 ]; then
-                        log_success "  SSL configured for ${instance_name}"
-                    else
-                        log_warning "  SSL setup failed for ${instance_name} (can be configured manually later)"
-                        log_info "  Certbot output: ${certbot_output}"
+                    if [ -f "$env_file" ]; then
+                        studio_domain="${instance_name}.${DOMAIN}"
+                        api_domain="${instance_name}-api.${DOMAIN}"
+                        
+                        log_info "  Setting up SSL for: ${studio_domain} and ${api_domain}"
+                        
+                        certbot_output=$(sudo certbot --nginx -d "$studio_domain" -d "$api_domain" \
+                            --non-interactive --agree-tos --redirect --email "$CERTBOT_EMAIL" 2>&1)
+                        certbot_exit=$?
+                        
+                        if [ $certbot_exit -eq 0 ]; then
+                            log_success "  SSL configured for ${instance_name}"
+                        else
+                            log_warning "  SSL setup failed for ${instance_name} (can be configured manually later)"
+                            log_info "  Certbot output: ${certbot_output}"
+                        fi
                     fi
                 fi
-            fi
-        done
+            done
+        fi
     fi
     
     echo ""

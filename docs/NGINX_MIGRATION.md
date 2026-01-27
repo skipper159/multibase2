@@ -294,7 +294,8 @@ The script uses these defaults (can be customized by editing the script):
 To customize these values, edit the script before running:
 
 ```bash
-nano migrate_nginx_configs.sh
+# Edit with your preferred text editor (vi, vim, nano, code, etc.)
+vi migrate_nginx_configs.sh
 # Update the variables at the top of the script
 ```
 
