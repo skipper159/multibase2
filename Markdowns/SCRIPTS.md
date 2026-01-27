@@ -88,6 +88,40 @@ Comprehensive service management scripts for the Multibase Dashboard.
 
 ---
 
+### 🔄 migrate_nginx_configs.sh
+**Purpose**: Migrate existing Supabase instance Nginx configurations to include authentication features.
+
+**Usage**:
+```bash
+cd ../bash
+./migrate_nginx_configs.sh [OPTIONS]
+```
+
+**Options**:
+- `--dry-run`: Show what would be done without making changes
+- `--skip-reload`: Don't reload Nginx after updating configs
+- `--skip-ssl`: Don't run Certbot for SSL certificates
+- `--projects-dir DIR`: Custom projects directory (default: ../projects)
+- `--nginx-dir DIR`: Custom nginx config directory (default: ../nginx/sites-enabled)
+- `--help`: Show help message
+
+**What it does**:
+1. ✅ Scan projects directory for existing instances
+2. ✅ Read instance configuration from .env files
+3. ✅ Generate updated Nginx configs with authentication
+4. ✅ Backup existing configs before updating
+5. ✅ Reload Nginx to apply changes
+6. ✅ Optionally run Certbot for SSL certificates
+
+**When to use**:
+- After upgrading to a version with authentication features
+- To add authentication to instances created before auth was available
+- To regenerate Nginx configs for existing instances
+
+**Documentation**: See [NGINX_MIGRATION.md](../docs/NGINX_MIGRATION.md) for detailed guide.
+
+---
+
 ## Common Workflows
 
 ### First Time Setup
