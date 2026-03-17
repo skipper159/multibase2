@@ -96,6 +96,22 @@
 
 ---
 
+### 🔮 Version 1.5 - Extension Marketplace
+
+**Planned Release:** Q3 2026  
+**Status:** 📋 Planned
+
+[📄 Go to Documentation →](./Extension_Marketplace_Plan.md)
+
+**Planned Features:**
+
+- 🛒 **Extension Marketplace** – Browse and install PostgreSQL extensions, integration packs, and community templates with one click
+- 🔌 **PostgreSQL Extensions** – pgvector, PostGIS, TimescaleDB, pg_cron and more
+- 📦 **Integration Packs** – Stripe, Resend, Twilio, Slack, GitHub/Google OAuth pre-configured
+- 🌐 **Community Templates** – Public library of shareable instance templates
+
+---
+
 ## 📋 Migration Path
 
 ### v1.0 → v1.1
@@ -205,6 +221,7 @@ gantt
 - [Readme1_3_Feature.md](./Readme1_3_Feature.md) - Version 1.3 Features
 - [CLOUD_ARCHITECTURE.md](./CLOUD_ARCHITECTURE.md) - Cloud Architecture Implementation Log
 - [KONG_NGINX_MIGRATION.md](./KONG_NGINX_MIGRATION.md) - Kong→Nginx Migration Reference
+- [Extension_Marketplace_Plan.md](./Extension_Marketplace_Plan.md) - Version 1.5 Extension Marketplace Plan
 
 ### Dashboard Specific
 
