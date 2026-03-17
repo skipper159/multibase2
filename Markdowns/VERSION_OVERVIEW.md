@@ -125,7 +125,7 @@
 - ⬜ 🏗️ **Terraform Provider** — Infrastructure-as-Code for Multibase instances, orgs, API keys
 - ⬜ 🛠️ **Management SDK TypeScript** — `@multibase/sdk` on npm with full API coverage
 - ⬜ 🐍 **Management SDK Python** — `multibase-sdk` on PyPI with async support
-- ⬜ 🧩 **Extension Marketplace** — One-click install of DB templates, Edge Functions, Auth configs
+- ⬜ 🧩 **Extension Marketplace** — One-click install of DB templates, Edge Functions, Auth configs | [→ Detailed Plan](./EXTENSION_MARKETPLACE_PLAN.md)
 - ⬜ 🌍 **Multi-Region Deployment** — Deploy instances across geographic regions with geo-routing
 
 **CLI Status:**
@@ -310,6 +310,7 @@ gantt
 - [Readme1_6_Feature.md](./Readme1_6_Feature.md) - Version 1.6 Features
 - [Readme1_7_Feature.md](./Readme1_7_Feature.md) - Version 1.7 Features
 - [Readme2_0_Feature.md](./Readme2_0_Feature.md) - Version 2.0 Feature Plan (In Planning)
+- [EXTENSION_MARKETPLACE_PLAN.md](./EXTENSION_MARKETPLACE_PLAN.md) - Extension Marketplace — Detailed Implementation Plan
 - [MULTI_TENANCY.md](../docs/MULTI_TENANCY.md) - Multi-Tenancy User Guide
 - [CLOUD_ARCHITECTURE.md](./CLOUD_ARCHITECTURE.md) - Cloud Architecture Implementation Log
 - [KONG_NGINX_MIGRATION.md](./KONG_NGINX_MIGRATION.md) - Kong→Nginx Migration Reference

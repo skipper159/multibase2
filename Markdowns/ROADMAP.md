@@ -394,7 +394,7 @@ Supabase bietet offizielle SDKs für JavaScript, Flutter, Python, C#, Swift, Kot
 - [ ] **Terraform Provider** — Deklarative Instanz-Konfiguration via HCL (`terraform-plugin-framework`, Terraform Registry Publish)
 - [ ] **Management SDK TypeScript** — `@multibase/sdk` auf npm, versionierte `/api/management/v1/` Endpunkte, OpenAPI 3.1 Spec
 - [ ] **Management SDK Python** — `multibase-sdk` auf PyPI, Async-Support, gleiche Module wie TS SDK
-- [ ] **Extension Marketplace** — `/settings/marketplace`, `InstalledExtension` Prisma-Model, 5 offizielle Extensions zum Start
+- [ ] **Extension Marketplace** — `/settings/marketplace` + `ExtensionsTab` im Workspace, 20 offizielle Extensions, Community-SDK | [→ Detailplan](EXTENSION_MARKETPLACE_PLAN.md)
 - [ ] **Multi-Region Deployment** — `Region` Prisma-Model, Control-Plane/Agent-Architektur, Geo-Routing, Failover
 
 ---
