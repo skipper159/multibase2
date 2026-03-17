@@ -388,12 +388,37 @@ Supabase bietet offizielle SDKs für JavaScript, Flutter, Python, C#, Swift, Kot
 - [x] MCP Server (Model Context Protocol — AI-Assistenten-Integration) ✅
 
 ### v2.0 — Platform Maturity
-> Fokus: IaC, SDK, Marketplace
+> Fokus: IaC, SDK, Marketplace, Multi-Region  
+> Detailplan: [Readme2_0_Feature.md](Readme2_0_Feature.md)
 
-- [ ] Terraform Provider
-- [ ] Management SDK (TypeScript + Python)
-- [ ] Extension Marketplace
-- [ ] Multi-Region Deployment
+- [ ] **Terraform Provider** — Deklarative Instanz-Konfiguration via HCL (`terraform-plugin-framework`, Terraform Registry Publish)
+- [ ] **Management SDK TypeScript** — `@multibase/sdk` auf npm, versionierte `/api/management/v1/` Endpunkte, OpenAPI 3.1 Spec
+- [ ] **Management SDK Python** — `multibase-sdk` auf PyPI, Async-Support, gleiche Module wie TS SDK
+- [ ] **Extension Marketplace** — `/settings/marketplace`, `InstalledExtension` Prisma-Model, 5 offizielle Extensions zum Start
+- [ ] **Multi-Region Deployment** — `Region` Prisma-Model, Control-Plane/Agent-Architektur, Geo-Routing, Failover
+
+---
+
+## CLI — Status
+
+> **Die CLI ist bereits implementiert** — `supabase_manager.py` ist ein **eigener Python 3 CLI** (~519 Zeilen), der speziell für dieses Projekt entwickelt wurde.  
+> Er ist **kein Bestandteil des Supabase-Stacks** (Supabase enthält keine vergleichbare Management-CLI für Multi-Tenant-Deployments).
+
+### Verfügbare Befehle
+
+```bash
+python supabase_manager.py shared-start              # Shared Infrastructure starten
+python supabase_manager.py shared-stop               # Shared Infrastructure stoppen
+python supabase_manager.py shared-status             # Status anzeigen
+python supabase_manager.py create <name> --base-port <port>  # Tenant erstellen
+python supabase_manager.py start <name>              # Tenant starten
+python supabase_manager.py stop <name>               # Tenant stoppen
+python supabase_manager.py reset <name>              # Tenant zurücksetzen
+python supabase_manager.py status <name>             # Status prüfen
+python supabase_manager.py list                      # Alle Tenants auflisten
+```
+
+In v2.0 wird die CLI um SDK-Wrapper-Befehle erweitert.
 
 ---
 
