@@ -205,6 +205,7 @@ A complete reference of all technical documentation available in this repository
 | Document                                                  | Description                                             |
 | :-------------------------------------------------------- | :------------------------------------------------------ |
 | [**Troubleshooting**](docs/TROUBLESHOOTING.md)            | Solutions for common Docker, Kong, and Database issues. |
+| [**Nginx Migration**](docs/NGINX_MIGRATION.md)            | Migrate existing instances to use authentication.       |
 | [**Cleanup Guide**](Markdowns/CLEANUP_RECOMMENDATIONS.md) | Best practices for removing unused orphans and volumes. |
 
 ---
@@ -354,4 +355,12 @@ python supabase_manager.py create <project_name>
 
 ```bash
 python supabase_manager.py list
+```
+
+**Migrate existing instance Nginx configs (for authentication):**
+
+```bash
+cd bash
+./migrate_nginx_configs.sh --dry-run  # Preview changes
+./migrate_nginx_configs.sh             # Apply migration
 ```
