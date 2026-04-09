@@ -25,32 +25,25 @@
 
 ---
 
-### 🚧 Version 1.1 - In Planning
+### ✅ Version 1.1 - Released
 
-**Planned Release:** Q1 2026  
-**Status:** 📋 In Planning / Development
+**Release:** January 2026  
+**Status:** ✅ Released and production-ready
 
 [📄 Go to Documentation →](./Readme1_1_feature.md)
 
-**Planned Features:**
+**Implemented Features:**
 
-- 👥 Extended User Management (2FA, Profiles, Sessions)
-- 🔔 Alert System with Notifications
-- 💾 Scheduled Backups & Extended Restore Options
-- 🔒 Rate Limiting & Input Validation (Zod)
-- 📊 Audit Logging & Health Endpoints
-- 📦 Instance Templates/Presets
-- 🔑 API Key Management
-- 🗄️ Database Migrations UI
-- 🔄 CI/CD Integration
-- 🚀 Production Deployment Guide
-
-**Priorities:**
-
-- **Phase 1 (High):** User Management, Alerts, Backups, Security
-- **Phase 2 (Medium):** Templates, API Keys, Audit Logs
-- **Phase 3 (Low):** Migrations, CI/CD
-- **Phase 4:** Production Deployment
+- ✅ 👥 **Extended User Management** (2FA, Profiles, Sessions)
+- ✅ 🔔 **Alert System** with Notifications
+- ✅ 💾 **Scheduled Backups** & Extended Restore Options
+- ✅ 🔒 **Rate Limiting** & Input Validation (Zod)
+- ✅ 📊 **Audit Logging** & Health Endpoints
+- ✅ 📦 **Instance Templates/Presets**
+- ✅ 🔑 **API Key Management**
+- ✅ 🗄️ **Database Migrations UI**
+- ✅ 🔄 **CI/CD Integration**
+- ✅ 🚀 **Production Deployment Guide**
 
 ---
 
@@ -107,6 +100,38 @@
 - ✅ 🔒 **Instance Isolation** — Middleware-level org-scoping for all API routes
 - ✅ ✉️ **Member Invitations** — Invite by email with selectable role
 - ✅ 🛠️ **Migration Script** — `scripts/migrate-v1.3-to-v1.4.js` auto-migrates existing data
+
+---
+
+### ✅ Versions 1.5–1.7 — Released
+
+| Version | Release | Key Features |
+|---------|---------|--------------|
+| **v1.5** | March 2026 | GraphQL Playground, DB Webhooks, Cron Manager, pgvector, Message Queues |
+| **v1.6** | March 2026 | Auth Extensions, Custom Domains, Vault Secrets, Network Restrictions, Tus Uploads |
+| **v1.7** | March 2026 | Edge Functions IDE, Read Replicas, Log Drains, Realtime Dashboard, MCP Server |
+
+---
+
+### 🚧 Version 2.0 — In Planning
+
+**Planned Release:** Q3 2026  
+**Status:** 📋 In Planning
+
+[📄 Go to Documentation →](./Readme2_0_Feature.md)
+
+**Planned Features:**
+
+- ⬜ 🏗️ **Terraform Provider** — Infrastructure-as-Code for Multibase instances, orgs, API keys
+- ⬜ 🛠️ **Management SDK TypeScript** — `@multibase/sdk` on npm with full API coverage
+- ⬜ 🐍 **Management SDK Python** — `multibase-sdk` on PyPI with async support
+- ⬜ 🧩 **Extension Marketplace** — One-click install of DB templates, Edge Functions, Auth configs | [→ Detailed Plan](./EXTENSION_MARKETPLACE_PLAN.md)
+- ⬜ 🌍 **Multi-Region Deployment** — Deploy instances across geographic regions with geo-routing
+
+**CLI Status:**
+
+> ✅ **Already implemented** — `supabase_manager.py` is a custom Python 3 CLI (519 lines).  
+> It is **not** part of the Supabase stack — it was built specifically for Multibase multi-tenant management.
 
 ---
 
@@ -181,11 +206,61 @@ gantt
     Org Switcher & UI           :done, 2026-03-12, 5d
     Member Invitations          :done, 2026-03-17, 3d
     Migration Script            :done, 2026-03-20, 2d
+    section Version 1.5
+    GraphQL + Webhooks + Cron   :done, 2026-03-01, 2w
+    pgvector + Queues           :done, 2026-03-15, 1w
+    section Version 1.6
+    Auth Extensions             :done, 2026-03-08, 1w
+    Custom Domains + Vault      :done, 2026-03-15, 1w
+    section Version 1.7
+    Edge Functions IDE          :done, 2026-03-10, 1w
+    Read Replicas + Log Drains  :done, 2026-03-17, 1w
+    MCP Server                  :done, 2026-03-17, 3d
+    section Version 2.0
+    Management SDK TS           :active, 2026-07-01, 4w
+    Management SDK Python       :2026-08-01, 3w
+    Extension Marketplace       :2026-08-01, 4w
+    Terraform Provider          :2026-09-01, 6w
+    Multi-Region Deployment     :2026-10-01, 8w
 ```
 
 ---
 
 ## 📝 Version History
+
+### v2.0.0 (Planned Q3 2026)
+
+- ⬜ Terraform Provider (HCL, Terraform Registry)
+- ⬜ Management SDK TypeScript (`@multibase/sdk` on npm)
+- ⬜ Management SDK Python (`multibase-sdk` on PyPI)
+- ⬜ Extension Marketplace (one-click install)
+- ⬜ Multi-Region Deployment (geo-routing, failover)
+
+### v1.7.0 (March 2026)
+
+- ✅ Edge Functions IDE (CodeMirror 6, TypeScript, Env Vars, Test Runner)
+- ✅ Read Replicas (external PostgreSQL registration, status monitor, lag display)
+- ✅ Log Drains (webhook export, json/ndjson/logfmt, 30s polling)
+- ✅ Realtime Dashboard (channels, presence, concurrent users config)
+- ✅ MCP Server (12 tools, JSON-RPC 2.0, Claude Desktop/Cursor/VS Code)
+
+### v1.6.0 (March 2026)
+
+- ✅ Auth Tab in Workspace + Auth Extensions (Phone/CAPTCHA/SAML/Templates)
+- ✅ Custom Domains per tenant (DNS-CNAME check + Certbot SSL + Nginx config)
+- ✅ Environment Labels (production/staging/dev/preview) + Clone Shortcuts
+- ✅ Storage: Tus Resumable Uploads + Nginx CDN Cache
+- ✅ Vault Secrets UI (pgsodium/pg_vault)
+- ✅ Network Restrictions (IP Whitelist, SSL enforcement, rate limiting)
+
+### v1.5.0 (March 2026)
+
+- ✅ GraphQL API Playground (pg_graphql)
+- ✅ Database Webhooks (pg_net)
+- ✅ Cron Job Manager (pg_cron)
+- ✅ AI & Vectors (pgvector — collections, embeddings, similarity search)
+- ✅ Message Queues (pgmq)
+- ✅ Workspace Redesign (3-level navigation)
 
 ### v1.4.0 (March 2026)
 
@@ -231,6 +306,11 @@ gantt
 - [Readme1_2_Feature.md](./Readme1_2_Feature.md) - Version 1.2 Features
 - [Readme1_3_Feature.md](./Readme1_3_Feature.md) - Version 1.3 Features
 - [Readme1_4_Feature.md](./Readme1_4_Feature.md) - Version 1.4 Features (Multi-Tenancy)
+- [Readme1_5_Feature.md](./Readme1_5_Feature.md) - Version 1.5 Features
+- [Readme1_6_Feature.md](./Readme1_6_Feature.md) - Version 1.6 Features
+- [Readme1_7_Feature.md](./Readme1_7_Feature.md) - Version 1.7 Features
+- [Readme2_0_Feature.md](./Readme2_0_Feature.md) - Version 2.0 Feature Plan (In Planning)
+- [EXTENSION_MARKETPLACE_PLAN.md](./EXTENSION_MARKETPLACE_PLAN.md) - Extension Marketplace — Detailed Implementation Plan
 - [MULTI_TENANCY.md](../docs/MULTI_TENANCY.md) - Multi-Tenancy User Guide
 - [CLOUD_ARCHITECTURE.md](./CLOUD_ARCHITECTURE.md) - Cloud Architecture Implementation Log
 - [KONG_NGINX_MIGRATION.md](./KONG_NGINX_MIGRATION.md) - Kong→Nginx Migration Reference
@@ -264,4 +344,4 @@ Suggestions for new features or improvements can be submitted as an Issue or Pul
 
 ---
 
-**Last Update:** March 2026
+**Last Update:** March 2026 (v2.0 plan added)
