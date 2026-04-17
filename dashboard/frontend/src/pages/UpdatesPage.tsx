@@ -251,6 +251,9 @@ export default function UpdatesPage() {
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Multibase Dashboard &amp; Supabase Docker Images
                 </p>
+                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-brand-500/20 text-brand-400 border border-brand-500/30">
+                  ✦ v3.0.10 — update process test
+                </span>
               </div>
             </div>
 
