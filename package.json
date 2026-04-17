@@ -22,7 +22,7 @@
     "lint": "npm run lint -w dashboard/frontend",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "[ \"$NODE_ENV\" = 'production' ] || husky"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",
