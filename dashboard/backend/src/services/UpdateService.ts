@@ -241,11 +241,13 @@ export class UpdateService extends EventEmitter {
           : ['git pull', 'backend install', 'restart'];
     this.emit('update:start', { type: 'multibase', steps });
 
+    const gitBranch = process.env.GIT_UPDATE_BRANCH ?? 'main';
+
     try {
       // Step 0: git fetch + reset (avoids diverged-branch errors from git pull)
       this.emitStep('git pull', 0, steps.length);
-      await this.runCommand('git', ['fetch', 'origin', 'main'], this.rootDir);
-      await this.runCommand('git', ['reset', '--hard', 'origin/main'], this.rootDir);
+      await this.runCommand('git', ['fetch', 'origin', gitBranch], this.rootDir);
+      await this.runCommand('git', ['reset', '--hard', `origin/${gitBranch}`], this.rootDir);
       this.emitStepDone('git pull', 0);
 
       // Step 1: backend npm install
