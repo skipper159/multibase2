@@ -1282,8 +1282,10 @@ export interface UpdateStatus {
   docker: DockerServiceInfo[];
   isUpdateInProgress: boolean;
   lastCheckedAt: string | null;
-  /** 'local' = single-server (backend builds frontend). 'split' = frontend deployed via CI. */
+  /** 'local' = single-server. 'split' = multi-server (rsync to VPS1 or CI). */
   frontendServe: 'local' | 'split';
+  /** true if VPS1 rsync vars are configured (split mode with auto-deploy) */
+  frontendRsync: boolean;
 }
 
 export const updatesApi = {

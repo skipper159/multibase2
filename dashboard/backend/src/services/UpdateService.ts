@@ -46,8 +46,10 @@ export interface UpdateStatus {
   docker: DockerServiceInfo[];
   isUpdateInProgress: boolean;
   lastCheckedAt: Date | null;
-  /** 'local' = single-server (backend builds frontend). 'split' = frontend deployed via CI. */
+  /** 'local' = single-server. 'split' = multi-server (rsync to VPS1 or CI). */
   frontendServe: 'local' | 'split';
+  /** true if VPS1 rsync vars are configured (split mode with auto-deploy) */
+  frontendRsync: boolean;
 }
 
 export class UpdateService extends EventEmitter {
@@ -200,6 +202,12 @@ export class UpdateService extends EventEmitter {
       isUpdateInProgress: this._isInProgress,
       lastCheckedAt: new Date(),
       frontendServe: this.frontendServe,
+      frontendRsync: !!(
+        process.env.VPS1_HOST &&
+        process.env.VPS1_USER &&
+        process.env.VPS1_KEY &&
+        process.env.VPS1_FRONTEND_PATH
+      ),
     };
 
     this.cachedStatus = status;
@@ -215,10 +223,22 @@ export class UpdateService extends EventEmitter {
     if (this._isInProgress) throw new Error('An update is already in progress');
     this._isInProgress = true;
 
-    const includeFrontend = this.frontendServe === 'local';
-    const steps = includeFrontend
-      ? ['git pull', 'backend install', 'frontend build', 'restart']
-      : ['git pull', 'backend install', 'restart'];
+    const vps1Host = process.env.VPS1_HOST;
+    const vps1User = process.env.VPS1_USER;
+    const vps1Key = process.env.VPS1_KEY;
+    const vps1Path = process.env.VPS1_FRONTEND_PATH;
+    const canDeploySplit = !!(vps1Host && vps1User && vps1Key && vps1Path);
+
+    // split + VPS1 vars set  → build frontend here and rsync to VPS1
+    // split + VPS1 vars missing → skip frontend entirely (CI handles it)
+    // local                   → build frontend here (served from same server)
+    const includeFrontend = this.frontendServe === 'local' || canDeploySplit;
+    const steps =
+      this.frontendServe === 'local'
+        ? ['git pull', 'backend install', 'frontend build', 'restart']
+        : canDeploySplit
+          ? ['git pull', 'backend install', 'frontend build', 'frontend deploy', 'restart']
+          : ['git pull', 'backend install', 'restart'];
     this.emit('update:start', { type: 'multibase', steps });
 
     try {
@@ -242,31 +262,50 @@ export class UpdateService extends EventEmitter {
       await this.runCommand('npx', ['prisma', 'generate'], backendDir);
       this.emitStepDone('backend install', 1);
 
+      const frontendDir = path.join(this.rootDir, 'dashboard', 'frontend');
+
       if (includeFrontend) {
-        // Step 2 (local only): frontend npm install + build
-        // --include=dev forces devDependencies (tsc, vite) even if NODE_ENV=production
-        this.emitStep('frontend build', 2, steps.length);
+        // frontend build step (both local and split with VPS1 vars)
+        const buildStepIdx = steps.indexOf('frontend build');
+        this.emitStep('frontend build', buildStepIdx, steps.length);
         this.emit('update:log', { line: 'Installing frontend dependencies...' });
         await this.runCommand(
           'npm',
-          ['install', '--prefer-offline', '--include=dev'],
-          path.join(this.rootDir, 'dashboard', 'frontend')
+          ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
+          frontendDir
         );
         this.emit('update:log', { line: 'Building frontend...' });
-        // Pass VITE_API_URL from BACKEND_URL env so the built app points at the correct API.
         const buildEnv: Record<string, string> = {};
         if (process.env.BACKEND_URL) buildEnv['VITE_API_URL'] = process.env.BACKEND_URL;
-        await this.runCommand(
-          'npm',
-          ['run', 'build'],
-          path.join(this.rootDir, 'dashboard', 'frontend'),
-          false,
-          buildEnv
-        );
-        this.emitStepDone('frontend build', 2);
+        await this.runCommand('npm', ['run', 'build'], frontendDir, false, buildEnv);
+        this.emitStepDone('frontend build', buildStepIdx);
+
+        if (canDeploySplit) {
+          // split mode: rsync dist/ to VPS1
+          const deployStepIdx = steps.indexOf('frontend deploy');
+          this.emitStep('frontend deploy', deployStepIdx, steps.length);
+          this.emit('update:log', {
+            line: `Deploying frontend to ${vps1User}@${vps1Host}:${vps1Path} ...`,
+          });
+          const distDir = path.join(frontendDir, 'dist') + '/';
+          await this.runCommand(
+            'rsync',
+            [
+              '-rltDz',
+              '--delete',
+              '-e',
+              `ssh -i ${vps1Key} -o StrictHostKeyChecking=no -o BatchMode=yes`,
+              distDir,
+              `${vps1User}@${vps1Host}:${vps1Path}`,
+            ],
+            this.rootDir
+          );
+          this.emit('update:log', { line: '✓ Frontend deployed to VPS1' });
+          this.emitStepDone('frontend deploy', deployStepIdx);
+        }
       } else {
         this.emit('update:log', {
-          line: 'Skipping frontend build (FRONTEND_SERVE=split — frontend is deployed via CI).',
+          line: 'Skipping frontend (FRONTEND_SERVE=split, no VPS1 vars set — deploy via CI).',
         });
       }
 

@@ -353,9 +353,9 @@ export default function UpdatesPage() {
               <GitBranch className="w-4 h-4 flex-shrink-0 mt-0.5 text-brand-400" />
               <div>
                 <span className="text-foreground font-medium">Split-server mode: </span>
-                The frontend is deployed independently via CI/CD. Clicking &ldquo;Update
-                Multibase&rdquo; will update the backend only (git pull → npm install → pm2
-                restart). The frontend will update automatically on the next CI push.
+                {status?.frontendRsync
+                  ? 'Frontend will be built and deployed to the frontend server automatically as part of this update.'
+                  : 'No frontend server configured — frontend updates via CI/CD only. Set VPS1_HOST, VPS1_USER, VPS1_KEY and VPS1_FRONTEND_PATH to enable automatic frontend deploy.'}
               </div>
             </div>
           )}
