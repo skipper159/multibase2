@@ -1,6 +1,6 @@
 {
   "name": "multibase-dashboard-backend",
-  "version": "3.0.10",
+  "version": "3.0.11",
   "description": "Backend API for Multibase Dashboard",
   "main": "dist/server.js",
   "scripts": {
