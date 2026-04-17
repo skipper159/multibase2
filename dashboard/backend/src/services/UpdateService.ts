@@ -229,13 +229,17 @@ export class UpdateService extends EventEmitter {
       this.emitStepDone('git pull', 0);
 
       // Step 1: backend npm install
-      // (npm ci würde node_modules löschen — scheitert wenn owned by root nach deploy)
+      // --include=dev: tsc braucht @types/* zum Bauen (wird nach dem Build entfernt)
+      // --ignore-scripts: verhindert husky-Fehler aus dem Root-workspace prepare-Script
       this.emitStep('backend install', 1, steps.length);
+      const backendDir = path.join(this.rootDir, 'dashboard', 'backend');
       await this.runCommand(
         'npm',
-        ['install', '--prefer-offline'],
-        path.join(this.rootDir, 'dashboard', 'backend')
+        ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
+        backendDir
       );
+      // Prisma-Client explizit generieren (durch --ignore-scripts übersprungen)
+      await this.runCommand('npx', ['prisma', 'generate'], backendDir);
       this.emitStepDone('backend install', 1);
 
       if (includeFrontend) {
