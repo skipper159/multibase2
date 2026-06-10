@@ -68,9 +68,9 @@ export default function MarketplacePage() {
   const featured = extensions.filter((e) => e.featured);
 
   const all =
-    sort === 'rating' ? extensions.toSorted((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-    : sort === 'installs' ? extensions.toSorted((a, b) => b.installCount - a.installCount)
-    : sort === 'name' ? extensions.toSorted((a, b) => a.name.localeCompare(b.name))
+    sort === 'rating' ? [...extensions].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    : sort === 'installs' ? [...extensions].sort((a, b) => b.installCount - a.installCount)
+    : sort === 'name' ? [...extensions].sort((a, b) => a.name.localeCompare(b.name))
     : extensions;
 
   const currentCategoryLabel = CATEGORIES.find((c) => c.id === category)?.label;
