@@ -1,0 +1,121 @@
+name: Deploy Backend (Feature_Roadmap)
+
+on:
+  # push:
+  #   branches: [Feature_Roadmap]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy Backend Files to VPS 2
+        uses: easingthemes/ssh-deploy@v5.0.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.VPS2_HOST }}
+          REMOTE_USER: ${{ secrets.VPS2_USER }}
+          # Exclude frontend, git metadata, and node_modules (installed on server)
+          EXCLUDE: '/node_modules/, /dashboard/frontend/node_modules/, /dashboard/frontend/dist/, .git/, .github/'
+          TARGET: '/opt/multibase/'
+          # -og removed: do NOT preserve source UID/GID (runner=1001 ≠ multibase=999)
+          ARGS: '-rltDzvO'
+
+      - name: Fix Ownership After Rsync
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS2_HOST }}
+          username: ${{ secrets.VPS2_USER }}
+          key: ${{ secrets.VPS2_SSH_KEY }}
+          script: |
+            # Fix rsync ownership for app files only.
+            # IMPORTANT: exclude shared/volumes/db/data (PostgreSQL data dir, owned by UID 105 inside container)
+            # and projects/ (Supabase project volumes with container-specific UIDs).
+            find /opt/multibase -mindepth 1 -maxdepth 1 \
+              ! -name 'shared' ! -name 'projects' \
+              -exec chown -R multibase:multibase {} \;
+            # Also fix dashboard/backend itself (it's inside the tree above, covered)
+            # Fix shared dir but NOT the db/data sub-volume
+            chown -R multibase:multibase /opt/multibase/shared/volumes/api \
+              /opt/multibase/shared/volumes/nginx \
+              /opt/multibase/shared/volumes/pooler \
+              /opt/multibase/shared/volumes/storage \
+              /opt/multibase/shared/config 2>/dev/null || true
+            chown multibase:multibase /opt/multibase/shared/volumes /opt/multibase/shared/volumes/db
+            echo "✓ Ownership fixed (PostgreSQL data dir preserved)"
+
+      - name: Post-Deployment Commands (VPS 2)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS2_HOST }}
+          username: ${{ secrets.VPS2_USER }}
+          key: ${{ secrets.VPS2_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/multibase/dashboard/backend
+
+            # --- .env: nur anlegen wenn noch nicht vorhanden ---
+            # Die .env wurde von install.sh korrekt generiert (inkl. SESSION_SECRET,
+            # REDIS_URL mit Passwort, allen Domains). Niemals überschreiben!
+            if [ ! -f .env ]; then
+              echo "WARNUNG: .env fehlt – erstelle Minimal-.env. Bitte install.sh ausführen!"
+              cat > .env <<ENV
+            PORT=3001
+            NODE_ENV=production
+            DATABASE_URL=file:./prisma/data/multibase.db
+            REDIS_URL=redis://localhost:6379
+            PROJECTS_PATH=/opt/multibase/projects
+            PYTHON_PATH=/opt/multibase/venv/bin/python3
+            BACKUP_PATH=/opt/multibase/backups
+            SHARED_DIR=/opt/multibase/shared
+            BACKEND_DOMAIN=backend.tyto-design.de
+            ROOT_DOMAIN=tyto-design.de
+            FRONTEND_DOMAIN=multibase.tyto-design.de
+            BACKEND_URL=https://backend.tyto-design.de
+            DASHBOARD_URL=https://multibase.tyto-design.de
+            APP_URL=https://multibase.tyto-design.de
+            COOKIE_DOMAIN=.tyto-design.de
+            CORS_ORIGIN=https://multibase.tyto-design.de
+            LOG_LEVEL=info
+            METRICS_INTERVAL=15000
+            HEALTH_CHECK_INTERVAL=10000
+            ALERT_CHECK_INTERVAL=60000
+            SESSION_SECRET=${{ secrets.SESSION_SECRET }}
+            ENV
+            fi
+
+            # --- Datenbank-Pfad sicherstellen ---
+            # Bestehende DB liegt in prisma/data/ (legacy-Pfad von Prisma 5).
+            # Neuer Code (Prisma 7) liest DATABASE_URL via path.resolve() vom CWD.
+            # Sicherstellen, dass der Pfad in .env zum tatsächlichen DB-Ort passt.
+            ACTUAL_DB=$(find /opt/multibase/dashboard/backend -name "multibase.db" 2>/dev/null | head -1)
+            if [ -n "$ACTUAL_DB" ]; then
+              RELATIVE_DB=$(realpath --relative-to=/opt/multibase/dashboard/backend "$ACTUAL_DB")
+              sed -i "s|DATABASE_URL=.*|DATABASE_URL=file:./${RELATIVE_DB}|" .env
+              echo "DB-Pfad in .env gesetzt: file:./${RELATIVE_DB}"
+            fi
+
+            # --- Dependencies installieren (inkl. better-sqlite3 native compile) ---
+            npm ci
+
+            # --- Prisma Client generieren (mit neuem Adapter) ---
+            npx prisma generate
+
+            # --- TypeScript bauen ---
+            npm run build
+
+            # --- Datenbank-Migrationen anwenden ---
+            npx prisma migrate deploy
+
+            # --- DevDependencies entfernen (prisma CLI nicht mehr benötigt) ---
+            npm prune --omit=dev
+
+            # --- Backend neu starten (PM2 läuft unter dem 'multibase' User) ---
+            su - multibase -s /bin/bash -c "pm2 restart multibase-backend && pm2 save"
+
+            echo "✓ Deployment abgeschlossen"

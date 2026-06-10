@@ -150,7 +150,7 @@ export class InstanceManager {
         return client;
       } catch (error: any) {
         lastError = error;
-        await client.end().catch(() => { });
+        await client.end().catch(() => {});
       }
     }
 
@@ -672,7 +672,8 @@ export class InstanceManager {
           } else {
             // Cloud: Browser geht über nginx + echte Domain
             const domain = process.env.BACKEND_DOMAIN || 'localhost';
-            const rootDomain = process.env.ROOT_DOMAIN ||
+            const rootDomain =
+              process.env.ROOT_DOMAIN ||
               (() => {
                 const parts = domain.split('.');
                 return parts.length >= 3 ? parts.slice(-2).join('.') : domain;
@@ -773,8 +774,8 @@ export class InstanceManager {
     if (mode === 'local') {
       logger.info(
         `[local] Skipping nginx config for "${instance.name}" — ` +
-        `Studio: http://localhost:${instance.ports.studio ?? 3000}, ` +
-        `API/Kong: http://localhost:${instance.ports.gateway_port ?? 8000}`
+          `Studio: http://localhost:${instance.ports.studio ?? 3000}, ` +
+          `API/Kong: http://localhost:${instance.ports.gateway_port ?? 8000}`
       );
       return;
     }
@@ -797,7 +798,8 @@ export class InstanceManager {
           const parts = domain.split('.');
           return parts.length >= 3 ? parts.slice(-2).join('.') : domain;
         })();
-      const dashboardUrl = process.env.DASHBOARD_URL || `https://${process.env.FRONTEND_DOMAIN || domain}`;
+      const dashboardUrl =
+        process.env.DASHBOARD_URL || `https://${process.env.FRONTEND_DOMAIN || domain}`;
       const backendUrl = process.env.BACKEND_URL || `https://${domain}`;
 
       // Cloud-Version: Studio Proxy zeigt auf Shared Studio
@@ -806,22 +808,73 @@ export class InstanceManager {
           ? process.env.SHARED_STUDIO_PORT || '3000'
           : instance.ports.studio || '3000';
 
-      // Wildcard cert path — *.rootDomain covers all instance subdomains
-      const certDir = `/etc/letsencrypt/live/${rootDomain}`;
-      const wildcardCertExists =
-        deploymentType === 'cloud' && fs.existsSync(`${certDir}/fullchain.pem`);
+      const execAsync = promisify(exec);
+
+      // Helper: check cert file exists AND is not expired
+      const isCertValid = async (certPath: string): Promise<boolean> => {
+        if (!fs.existsSync(certPath)) return false;
+        try {
+          await execAsync(`openssl x509 -in "${certPath}" -checkend 0 -noout`);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const wildcardCertDir = `/etc/letsencrypt/live/${rootDomain}`;
+      const studioDomain = `${instance.name}.${rootDomain}`;
+      const apiDomain = `${instance.name}-api.${rootDomain}`;
+      const perInstanceCertDir = `/etc/letsencrypt/live/${studioDomain}`;
+
+      // Resolve which cert to use: wildcard → per-instance → issue new via certbot
+      let resolvedCertDir = '';
+      if (deploymentType === 'cloud') {
+        if (await isCertValid(`${wildcardCertDir}/fullchain.pem`)) {
+          resolvedCertDir = wildcardCertDir;
+          logger.info(`Wildcard cert covers ${studioDomain} — no per-instance cert needed.`);
+        } else if (await isCertValid(`${perInstanceCertDir}/fullchain.pem`)) {
+          resolvedCertDir = perInstanceCertDir;
+          logger.info(`Using existing per-instance cert for ${studioDomain}.`);
+        } else {
+          // No valid cert: write a minimal HTTP config so certbot can run HTTP-01 challenge
+          const configPath = path.join(nginxDir, `${instance.name}.conf`);
+          const httpOnlyConfig = `server {\n    listen 80;\n    server_name ${studioDomain} ${apiDomain};\n}\n`;
+          fs.writeFileSync(configPath, httpOnlyConfig);
+          try {
+            await execAsync('sudo nginx -t && sudo nginx -s reload');
+          } catch {
+            /* ignore */
+          }
+
+          try {
+            const adminEmail = process.env.LETSENCRYPT_EMAIL || `admin@${rootDomain}`;
+            await execAsync(
+              `sudo certbot certonly --nginx ` +
+                `-d ${studioDomain} -d ${apiDomain} ` +
+                `--non-interactive --agree-tos --email ${adminEmail}`,
+              { timeout: 120000 }
+            );
+            if (await isCertValid(`${perInstanceCertDir}/fullchain.pem`)) {
+              resolvedCertDir = perInstanceCertDir;
+              logger.info(`Certbot issued new cert for ${studioDomain}.`);
+            }
+          } catch (certbotError: any) {
+            logger.warn(`Certbot failed for ${instance.name}: ${certbotError.message}`);
+          }
+        }
+      }
 
       // SSL block reused for both Studio and API server blocks
-      const sslBlock = wildcardCertExists
-        ? `    ssl_certificate ${certDir}/fullchain.pem;
-    ssl_certificate_key ${certDir}/privkey.pem;
+      const sslBlock = resolvedCertDir
+        ? `    ssl_certificate ${resolvedCertDir}/fullchain.pem;
+    ssl_certificate_key ${resolvedCertDir}/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 `
         : '';
 
       const configContent = `# Auto-generated config for ${instance.name}
-# Instance subdomain uses ROOT_DOMAIN (${rootDomain}) so the wildcard cert covers it.
+# SSL: uses wildcard cert *.${rootDomain} if valid, otherwise per-instance cert.
 server {
     listen 80;
     server_name ${instance.name}.${rootDomain};
@@ -849,6 +902,7 @@ ${sslBlock}
         proxy_set_header X-Instance-Name "${instance.name}";
         proxy_set_header X-Original-URI $request_uri;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header apikey $http_apikey;
     }
 
     # Health check endpoint (without auth for monitoring)
@@ -928,6 +982,7 @@ ${sslBlock}
         proxy_set_header X-Instance-Name "${instance.name}";
         proxy_set_header X-Original-URI $request_uri;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header apikey $http_apikey;
     }
 
     # Health check endpoint (without auth for monitoring)
@@ -981,27 +1036,18 @@ ${sslBlock}
       logger.info(`Created Nginx config with authentication for ${instance.name}: ${configPath}`);
 
       // Reload Nginx to apply changes
-      const execAsync = promisify(exec);
       try {
         await execAsync('sudo nginx -s reload');
         logger.info('Nginx reloaded successfully');
       } catch (reloadError) {
         logger.error('Failed to reload Nginx. Configurations might not be applied:', reloadError);
-        // If reload fails, Certbot might also fail if it relies on the running server
       }
 
-      // SSL: wildcard cert *.rootDomain covers all instance subdomains automatically.
-      // No per-instance Certbot run needed.
-      if (deploymentType === 'cloud') {
-        if (wildcardCertExists) {
-          logger.info(`Wildcard cert at ${certDir} covers ${instance.name}.${rootDomain} — no Certbot needed.`);
-        } else {
-          logger.warn(
-            `No wildcard cert found at ${certDir}. ` +
-            `Ensure ROOT_DOMAIN=${rootDomain} is set and a wildcard cert exists. ` +
-            `Instance ${instance.name} will serve HTTP only until SSL is configured.`
-          );
-        }
+      if (!resolvedCertDir) {
+        logger.warn(
+          `No valid SSL cert for ${studioDomain}. ` +
+            `Instance serves HTTP only. Check certbot or set LETSENCRYPT_EMAIL.`
+        );
       }
     } catch (error) {
       logger.error(`Failed to create Nginx config for ${instance.name}:`, error);
@@ -1447,7 +1493,7 @@ ${sslBlock}
       logger.error(`Failed to get schema for ${name}:`, error.message);
       return [];
     } finally {
-      await client.end().catch(() => { });
+      await client.end().catch(() => {});
     }
   }
 
@@ -1488,7 +1534,7 @@ ${sslBlock}
     } catch (error: any) {
       return { rows: [], error: error.message };
     } finally {
-      await client.end().catch(() => { });
+      await client.end().catch(() => {});
     }
   }
 

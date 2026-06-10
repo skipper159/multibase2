@@ -49,6 +49,7 @@ const queryClient = new QueryClient({
 
 import LandingPage from './pages/LandingPage';
 import FeedbackPage from './pages/FeedbackPage';
+import VerifyEmail from './pages/VerifyEmail';
 
 function AppContent() {
   // Initialize WebSocket connection for real-time updates
@@ -66,7 +67,7 @@ function AppContent() {
         <Route path='/login' element={<Navigate to='/' replace />} />
         <Route path='/register' element={<Navigate to='/' replace />} />
         <Route path='/forgot-password' element={<Navigate to='/' replace />} />
-        <Route path='/verify-email' element={<Navigate to='/' replace />} />
+        <Route path='/verify-email' element={<VerifyEmail />} />
 
         {/* Workspace Routes (slim layout) */}
         <Route
