@@ -94,9 +94,7 @@ jobs:
           # Append manual notes if provided
           MANUAL="${{ github.event.inputs.notes }}"
           if [ -n "$MANUAL" ]; then
-            LOG="$LOG
-
-**Notes:** $MANUAL"
+            LOG=$(printf "%s\n\n**Notes:** %s" "$LOG" "$MANUAL")
           fi
 
           # Write to file to preserve newlines
