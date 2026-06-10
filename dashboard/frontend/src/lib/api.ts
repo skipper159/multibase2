@@ -655,7 +655,7 @@ export const storageApi = {
         Authorization: `Bearer ${token}`,
       },
       body: formData,
-    }).then(async (res) => {
+    }).then(async res => {
       if (!res.ok) {
         const error = await res.text();
         throw new Error(error || res.statusText);
@@ -1282,18 +1282,23 @@ export interface UpdateStatus {
   docker: DockerServiceInfo[];
   isUpdateInProgress: boolean;
   lastCheckedAt: string | null;
+  /** 'local' = single-server. 'split' = multi-server (rsync to VPS1 or CI). */
+  frontendServe: 'local' | 'split';
+  /** true if VPS1 rsync vars are configured (split mode with auto-deploy) */
+  frontendRsync: boolean;
 }
 
 export const updatesApi = {
   getStatus: (): Promise<UpdateStatus> => fetchApi('/api/updates/status'),
 
-  check: (): Promise<UpdateStatus> =>
-    fetchApi('/api/updates/check', { method: 'POST' }),
+  check: (): Promise<UpdateStatus> => fetchApi('/api/updates/check', { method: 'POST' }),
 
   updateMultibase: (): Promise<{ success: boolean; message: string }> =>
     fetchApi('/api/updates/multibase', { method: 'POST' }),
 
-  updateDocker: (services?: string[]): Promise<{ success: boolean; message: string; services: string[] }> =>
+  updateDocker: (
+    services?: string[]
+  ): Promise<{ success: boolean; message: string; services: string[] }> =>
     fetchApi('/api/updates/docker', {
       method: 'POST',
       body: JSON.stringify({ services }),

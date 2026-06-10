@@ -23,7 +23,7 @@ export default function VerifyEmail() {
         await verifyEmail(token);
         setStatus('success');
         setTimeout(() => {
-          navigate('/login');
+          navigate('/?login=true');
         }, 3000);
       } catch (err) {
         setStatus('error');

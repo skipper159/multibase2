@@ -27,10 +27,11 @@ jobs:
 
     steps:
       - name: Checkout main
-        run: |
-          git clone --branch main --no-single-branch \
-            https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git .
-          git fetch --tags
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Git identity
         run: |
@@ -93,10 +94,11 @@ jobs:
           # Append manual notes if provided
           MANUAL="${{ github.event.inputs.notes }}"
           if [ -n "$MANUAL" ]; then
-            LOG=$(printf '%s\n\n**Notes:** %s' "$LOG" "$MANUAL")
+            LOG=$(printf "%s\n\n**Notes:** %s" "$LOG" "$MANUAL")
           fi
 
-          printf '%s' "$LOG" > /tmp/changelog.md
+          # Write to file to preserve newlines
+          echo "$LOG" > /tmp/changelog.md
           echo "Changelog generated."
 
       - name: Commit version bump
@@ -113,17 +115,12 @@ jobs:
           git push origin "$TAG"
 
       - name: Create GitHub Release
-        run: |
-          TAG="${{ steps.new.outputs.tag }}"
-          BODY=$(cat /tmp/changelog.md)
-          curl -f -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
-            --data "$(jq -n \
-              --arg tag "$TAG" \
-              --arg name "Multibase $TAG" \
-              --arg body "$BODY" \
-              '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}')"
-          echo "GitHub Release created for $TAG"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.new.outputs.tag }}
+          name: "Multibase ${{ steps.new.outputs.tag }}"
+          body_path: /tmp/changelog.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

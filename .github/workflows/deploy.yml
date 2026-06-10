@@ -1,0 +1,111 @@
+name: Deploy Multibase Dashboard
+
+on:
+  #  push:
+  #    branches: [Feature_Roadmap]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ------------------------------------------------------------------
+  # JOB 1: Deploy Frontend to VPS 1 (triggers on main only)
+  # ------------------------------------------------------------------
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Frontend Dependencies
+        working-directory: ./dashboard/frontend
+        run: npm ci
+
+      - name: Build Frontend
+        working-directory: ./dashboard/frontend
+        env:
+          # Inject the Production API URL during build
+          VITE_API_URL: https://backend.tyto-design.de
+        run: npm run build
+
+      - name: Deploy to VPS 1 (Frontend)
+        uses: easingthemes/ssh-deploy@v5.0.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS1_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.VPS1_HOST }}
+          REMOTE_USER: ${{ secrets.VPS1_USER }}
+          # Deploy only the dist folder content
+          SOURCE: 'dashboard/frontend/dist/'
+          # Target directory on VPS 1
+          TARGET: '/home/tyto-design-multibase/htdocs/multibase.tyto-design.de'
+          # Create target if not exists
+          ARGS: '-rltgoDzvO --delete'
+
+  # ------------------------------------------------------------------
+  # JOB 2: Deploy Backend to VPS 2 (DISABLED on main — managed via cloud-version branch)
+  # ------------------------------------------------------------------
+  deploy-backend:
+    if: false # Never run from main — backend is deployed via cloud-version workflow
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Note: We don't build the backend in CI because it runs as Node source via PM2/ts-node usually,
+      # or we build locally. But for robustness, let's install deps to verify integrity.
+
+      - name: Copy Files to VPS 2 (Backend)
+        uses: easingthemes/ssh-deploy@v5.0.0
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS2_SSH_KEY }}
+          REMOTE_HOST: ${{ secrets.VPS2_HOST }}
+          REMOTE_USER: ${{ secrets.VPS2_USER }}
+          # Exclude node_modules to save bandwidth (install on server from lockfile)
+          EXCLUDE: '/node_modules/, .git/, .github/, /dashboard/frontend/'
+          # Deploy project root to /opt/multibase
+          TARGET: '/opt/multibase/'
+          ARGS: '-rltgoDzvO'
+
+      - name: Post-Deployment Commands (VPS 2)
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS2_HOST }}
+          username: ${{ secrets.VPS2_USER }}
+          key: ${{ secrets.VPS2_SSH_KEY }}
+          script: |
+            cd /opt/multibase/dashboard/backend
+
+            # Install production dependencies
+            npm ci
+
+            # Create .env.production from secrets if needed, or rely on manual file
+            # Ideally, we inject secrets here:
+            echo "PORT=3001" > .env
+            echo "NODE_ENV=production" >> .env
+            echo "PROJECTS_PATH=../../projects" >> .env
+            echo "LOG_LEVEL=info" >> .env
+            echo "DATABASE_URL=file:./data/multibase.db" >> .env
+            echo "REDIS_URL=redis://localhost:6379" >> .env
+            echo "CORS_ORIGIN=https://multibase.tyto-design.de,http://localhost:5173" >> .env
+            echo "METRICS_INTERVAL=15000" >> .env
+            echo "HEALTH_CHECK_INTERVAL=10000" >> .env
+            echo "ALERT_CHECK_INTERVAL=60000" >> .env
+            echo "APP_URL=https://multibase.tyto-design.de" >> .env
+            echo "DASHBOARD_URL=https://multibase.tyto-design.de" >> .env
+            echo "BACKEND_URL=https://backend.tyto-design.de" >> .env
+            echo "COOKIE_DOMAIN=.tyto-design.de" >> .env
+            echo "SESSION_SECRET=${{ secrets.SESSION_SECRET }}" >> .env
+
+            # Run Migrations
+            npx prisma generate
+            npx prisma migrate deploy
+
+            # Build Backend (Compile TS to JS)
+            npm run build
+
+            # Restart PM2
+            pm2 restart multibase-backend || pm2 start dist/server.js --name "multibase-backend"

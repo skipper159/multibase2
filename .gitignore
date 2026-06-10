@@ -66,6 +66,7 @@ backups/
 */.env
 
 # Editor files
+.claude/
 .vscode/
 .idea/
 *.swp

@@ -1,7 +1,9 @@
+import path from 'path';
 import { Router, Request, Response } from 'express';
 import AuthService from '../services/AuthService';
 import { logger } from '../utils/logger';
 import prisma from '../lib/prisma';
+import { parseEnvFile, extractCredentials } from '../utils/envParser';
 
 export function createInstanceAuthRoutes() {
   const router = Router();
@@ -17,6 +19,34 @@ export function createInstanceAuthRoutes() {
       const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
 
       if (!token) {
+        // Fallback: Supabase instance API key (apikey header sent by Supabase JS SDK)
+        const supabaseApiKey = req.headers['apikey'] as string;
+        const instanceNameForKey = req.headers['x-instance-name'] as string;
+
+        if (supabaseApiKey && instanceNameForKey) {
+          const instanceForKey = await prisma.instance.findUnique({ where: { id: instanceNameForKey } });
+          if (!instanceForKey) {
+            return res.status(404).json({ error: 'Instance not found' });
+          }
+          try {
+            const projectsPath =
+              process.env.PROJECTS_PATH || path.join(__dirname, '../../../projects');
+            const envConfig = parseEnvFile(path.join(projectsPath, instanceNameForKey, '.env'));
+            const credentials = extractCredentials(envConfig);
+
+            if (credentials.service_role_key && supabaseApiKey === credentials.service_role_key) {
+              logger.debug(`Instance access granted via service_role key: ${instanceNameForKey}`);
+              return res.status(200).json({ allowed: true, role: 'service_role' });
+            }
+            if (credentials.anon_key && supabaseApiKey === credentials.anon_key) {
+              logger.debug(`Instance access granted via anon key: ${instanceNameForKey}`);
+              return res.status(200).json({ allowed: true, role: 'anon' });
+            }
+          } catch (err) {
+            logger.debug(`Could not read env for instance ${instanceNameForKey}: ${err}`);
+          }
+        }
+
         logger.debug('Instance access denied: No token provided');
         return res.status(401).json({ error: 'Unauthorized - No token' });
       }

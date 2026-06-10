@@ -1,6 +1,6 @@
 {
   "name": "multibase2",
-  "version": "3.0.1",
+  "version": "3.0.11",
   "private": true,
   "description": "Multibase – Single Pane of Glass for self-hosted Supabase",
   "workspaces": [
@@ -22,7 +22,7 @@
     "lint": "npm run lint -w dashboard/frontend",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "[ \"$NODE_ENV\" = 'production' ] || husky || true"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.8.1",

@@ -128,7 +128,9 @@ export default function BackupManagement() {
                 credentials: 'include',
               });
               if (r.ok) statuses[b.id] = await r.json();
-            } catch {}
+            } catch {
+              // upload status fetch failed for this backup — skip silently
+            }
           })
         );
         setUploadStatuses(statuses);
@@ -164,7 +166,9 @@ export default function BackupManagement() {
         const data = await response.json();
         setDestinations(data.filter((d: BackupDestination) => d.enabled));
       }
-    } catch {}
+    } catch {
+      // destination fetch failed — silently ignored, destinations stay empty
+    }
   };
 
   useEffect(() => {

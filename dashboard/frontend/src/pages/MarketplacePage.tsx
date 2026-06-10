@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Package, Search, RefreshCw, Star } from 'lucide-react';
 import { marketplaceApi, type MarketplaceExtension } from '../lib/api';
@@ -67,13 +67,11 @@ export default function MarketplacePage() {
   const extensions = data?.extensions ?? [];
   const featured = extensions.filter((e) => e.featured);
 
-  const all = useMemo(() => {
-    const list = [...extensions];
-    if (sort === 'rating') return list.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    if (sort === 'installs') return list.sort((a, b) => b.installCount - a.installCount);
-    if (sort === 'name') return list.sort((a, b) => a.name.localeCompare(b.name));
-    return list;
-  }, [extensions, sort]);
+  const all =
+    sort === 'rating' ? [...extensions].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+    : sort === 'installs' ? [...extensions].sort((a, b) => b.installCount - a.installCount)
+    : sort === 'name' ? [...extensions].sort((a, b) => a.name.localeCompare(b.name))
+    : extensions;
 
   const currentCategoryLabel = CATEGORIES.find((c) => c.id === category)?.label;
   const emptyMessage =

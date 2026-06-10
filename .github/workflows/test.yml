@@ -30,6 +30,10 @@ jobs:
         working-directory: dashboard/backend
         continue-on-error: true # Warn but don't block on audit findings
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: dashboard/backend
+
       - name: TypeScript check
         run: npx tsc --noEmit
         working-directory: dashboard/backend

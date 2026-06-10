@@ -447,7 +447,9 @@ function ConfigureStep({
   let configSchema: ConfigSchema = {};
   try {
     if (extension.configSchema) configSchema = JSON.parse(extension.configSchema);
-  } catch {}
+  } catch {
+    // invalid JSON schema — fall back to empty config
+  }
   const hasConfigFields = Object.keys(configSchema).length > 0;
 
   return (

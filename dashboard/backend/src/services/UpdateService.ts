@@ -46,11 +46,16 @@ export interface UpdateStatus {
   docker: DockerServiceInfo[];
   isUpdateInProgress: boolean;
   lastCheckedAt: Date | null;
+  /** 'local' = single-server. 'split' = multi-server (rsync to VPS1 or CI). */
+  frontendServe: 'local' | 'split';
+  /** true if VPS1 rsync vars are configured (split mode with auto-deploy) */
+  frontendRsync: boolean;
 }
 
 export class UpdateService extends EventEmitter {
   private readonly dockerManager: DockerManager;
   private readonly rootDir: string;
+  private readonly frontendServe: 'local' | 'split';
   private _isInProgress = false;
   private cachedStatus: UpdateStatus | null = null;
   private cacheExpiry: Date | null = null;
@@ -64,6 +69,8 @@ export class UpdateService extends EventEmitter {
     super();
     this.dockerManager = dockerManager;
     this.rootDir = rootDir;
+    const mode = process.env.FRONTEND_SERVE ?? 'local';
+    this.frontendServe = mode === 'split' ? 'split' : 'local';
   }
 
   // ──────────────────────────────────────────────
@@ -97,12 +104,15 @@ export class UpdateService extends EventEmitter {
       const response = await fetch(
         'https://api.github.com/repos/skipper159/multibase2/releases/latest',
         {
-          headers: { 'User-Agent': 'multibase-dashboard/3.0.0', Accept: 'application/vnd.github+json' },
+          headers: {
+            'User-Agent': 'multibase-dashboard/3.0.0',
+            Accept: 'application/vnd.github+json',
+          },
           signal: AbortSignal.timeout(8000),
         }
       );
       if (response.ok) {
-        const data: any = await response.json();
+        const data = (await response.json()) as { tag_name?: string; body?: string };
         const version = data.tag_name?.replace(/^v/, '') || null;
         if (version) {
           return { version, changelog: data.body || null };
@@ -122,7 +132,7 @@ export class UpdateService extends EventEmitter {
         }
       );
       if (response.ok) {
-        const pkg: any = await response.json();
+        const pkg = (await response.json()) as { version?: string };
         const version = pkg.version || null;
         if (version) {
           return { version, changelog: null };
@@ -136,7 +146,7 @@ export class UpdateService extends EventEmitter {
   }
 
   private compareVersions(a: string, b: string): number {
-    const parse = (v: string) => v.split('.').map((n) => parseInt(n, 10) || 0);
+    const parse = (v: string) => v.split('.').map(n => parseInt(n, 10) || 0);
     const [am, an, ap] = parse(a);
     const [bm, bn, bp] = parse(b);
     if (am !== bm) return am - bm;
@@ -147,10 +157,8 @@ export class UpdateService extends EventEmitter {
   private async getDockerServiceInfo(): Promise<DockerServiceInfo[]> {
     const containers = await this.dockerManager.listSharedContainers();
 
-    return (SHARED_SERVICES as readonly string[]).map((serviceName) => {
-      const container = containers.find((c) =>
-        c.Names.some((n) => n.replace('/', '') === serviceName)
-      );
+    return (SHARED_SERVICES as readonly string[]).map(serviceName => {
+      const container = containers.find(c => c.Names.some(n => n.replace('/', '') === serviceName));
 
       if (!container) {
         return {
@@ -164,10 +172,7 @@ export class UpdateService extends EventEmitter {
       const imageName = container.Image || 'unknown';
       const colonIdx = imageName.lastIndexOf(':');
       const tag = colonIdx !== -1 ? imageName.slice(colonIdx + 1) : 'latest';
-      const status =
-        container.State === 'running'
-          ? ('running' as const)
-          : ('stopped' as const);
+      const status = container.State === 'running' ? ('running' as const) : ('stopped' as const);
 
       return { service: serviceName, image: imageName, tag, status };
     });
@@ -196,6 +201,13 @@ export class UpdateService extends EventEmitter {
       docker,
       isUpdateInProgress: this._isInProgress,
       lastCheckedAt: new Date(),
+      frontendServe: this.frontendServe,
+      frontendRsync: !!(
+        process.env.VPS1_HOST &&
+        process.env.VPS1_USER &&
+        process.env.VPS1_KEY &&
+        process.env.VPS1_FRONTEND_PATH
+      ),
     };
 
     this.cachedStatus = status;
@@ -211,42 +223,105 @@ export class UpdateService extends EventEmitter {
     if (this._isInProgress) throw new Error('An update is already in progress');
     this._isInProgress = true;
 
-    const steps = ['git pull', 'backend install', 'frontend build', 'restart'];
+    const vps1Host = process.env.VPS1_HOST;
+    const vps1User = process.env.VPS1_USER;
+    const vps1Key = process.env.VPS1_KEY;
+    const vps1Path = process.env.VPS1_FRONTEND_PATH;
+    const canDeploySplit = !!(vps1Host && vps1User && vps1Key && vps1Path);
+
+    // split + VPS1 vars set  → build frontend here and rsync to VPS1
+    // split + VPS1 vars missing → skip frontend entirely (CI handles it)
+    // local                   → build frontend here (served from same server)
+    const includeFrontend = this.frontendServe === 'local' || canDeploySplit;
+    const steps =
+      this.frontendServe === 'local'
+        ? ['git pull', 'backend install', 'frontend build', 'restart']
+        : canDeploySplit
+          ? ['git pull', 'backend install', 'frontend build', 'frontend deploy', 'restart']
+          : ['git pull', 'backend install', 'restart'];
     this.emit('update:start', { type: 'multibase', steps });
 
+    const gitBranch = process.env.GIT_UPDATE_BRANCH ?? 'main';
+
     try {
-      // Step 1: git fetch + reset (avoids diverged-branch errors from git pull)
+      // Step 0: git fetch + reset (avoids diverged-branch errors from git pull)
       this.emitStep('git pull', 0, steps.length);
-      await this.runCommand('git', ['fetch', 'origin', 'main'], this.rootDir);
-      await this.runCommand('git', ['reset', '--hard', 'origin/main'], this.rootDir);
+      await this.runCommand('git', ['fetch', 'origin', gitBranch], this.rootDir);
+      await this.runCommand('git', ['reset', '--hard', `origin/${gitBranch}`], this.rootDir);
       this.emitStepDone('git pull', 0);
 
-      // Step 2: backend npm install
-      // (npm ci würde node_modules löschen — scheitert wenn owned by root nach deploy)
+      // Step 1: backend npm install
+      // --include=dev: tsc braucht @types/* zum Bauen (wird nach dem Build entfernt)
+      // --ignore-scripts: verhindert husky-Fehler aus dem Root-workspace prepare-Script
       this.emitStep('backend install', 1, steps.length);
-      await this.runCommand('npm', ['install', '--prefer-offline'], path.join(this.rootDir, 'dashboard', 'backend'));
-      this.emitStepDone('backend install', 1);
-
-      // Step 3: frontend npm install + build
-      // --include=dev: force devDependencies (TypeScript etc) even if NODE_ENV=production
-      this.emitStep('frontend build', 2, steps.length);
-      await this.runCommand('npm', ['install', '--prefer-offline', '--include=dev'], path.join(this.rootDir, 'dashboard', 'frontend'));
+      const backendDir = path.join(this.rootDir, 'dashboard', 'backend');
       await this.runCommand(
         'npm',
-        ['run', 'build'],
-        path.join(this.rootDir, 'dashboard', 'frontend')
+        ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
+        backendDir
       );
-      this.emitStepDone('frontend build', 2);
+      // Prisma-Client explizit generieren (durch --ignore-scripts übersprungen)
+      await this.runCommand('npx', ['prisma', 'generate'], backendDir);
+      this.emitStepDone('backend install', 1);
 
-      // Step 4: pm2 restart (detached so the process can restart itself)
-      this.emitStep('restart', 3, steps.length);
+      const frontendDir = path.join(this.rootDir, 'dashboard', 'frontend');
+
+      if (includeFrontend) {
+        // frontend build step (both local and split with VPS1 vars)
+        const buildStepIdx = steps.indexOf('frontend build');
+        this.emitStep('frontend build', buildStepIdx, steps.length);
+        this.emit('update:log', { line: 'Installing frontend dependencies...' });
+        await this.runCommand(
+          'npm',
+          ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
+          frontendDir
+        );
+        this.emit('update:log', { line: 'Building frontend...' });
+        const buildEnv: Record<string, string> = {};
+        if (process.env.BACKEND_URL) buildEnv['VITE_API_URL'] = process.env.BACKEND_URL;
+        await this.runCommand('npm', ['run', 'build'], frontendDir, false, buildEnv);
+        this.emitStepDone('frontend build', buildStepIdx);
+
+        if (canDeploySplit) {
+          // split mode: rsync dist/ to VPS1
+          const deployStepIdx = steps.indexOf('frontend deploy');
+          this.emitStep('frontend deploy', deployStepIdx, steps.length);
+          this.emit('update:log', {
+            line: `Deploying frontend to ${vps1User}@${vps1Host}:${vps1Path} ...`,
+          });
+          const distDir = path.join(frontendDir, 'dist') + '/';
+          await this.runCommand(
+            'rsync',
+            [
+              '-rltDz',
+              '--delete',
+              '-e',
+              `ssh -i ${vps1Key} -o StrictHostKeyChecking=no -o BatchMode=yes`,
+              distDir,
+              `${vps1User}@${vps1Host}:${vps1Path}`,
+            ],
+            this.rootDir
+          );
+          this.emit('update:log', { line: '✓ Frontend deployed to VPS1' });
+          this.emitStepDone('frontend deploy', deployStepIdx);
+        }
+      } else {
+        this.emit('update:log', {
+          line: 'Skipping frontend (FRONTEND_SERVE=split, no VPS1 vars set — deploy via CI).',
+        });
+      }
+
+      // Last step: pm2 restart (detached so the process can restart itself)
+      const restartIdx = steps.length - 1;
+      this.emitStep('restart', restartIdx, steps.length);
       this.emit('update:log', { line: 'Restarting via PM2 — connection will briefly drop...' });
       await this.runCommand('pm2', ['restart', 'all'], this.rootDir, true);
-      this.emitStepDone('restart', 3);
+      this.emitStepDone('restart', restartIdx);
 
       this.emit('update:complete', { type: 'multibase' });
-    } catch (error: any) {
-      this.emit('update:error', { type: 'multibase', error: error.message });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit('update:error', { type: 'multibase', error: message });
       throw error;
     } finally {
       this._isInProgress = false;
@@ -276,28 +351,25 @@ export class UpdateService extends EventEmitter {
         this.emitStep(service, i, services.length);
 
         this.emit('update:log', { line: `[${service}] Stopping container...` });
-        await execAsync(
-          `docker compose -f "${composePath}" stop ${composeService}`,
-          { cwd: sharedDir }
-        ).then(({ stdout, stderr }) => {
+        await execAsync(`docker compose -f "${composePath}" stop ${composeService}`, {
+          cwd: sharedDir,
+        }).then(({ stdout, stderr }) => {
           if (stdout.trim()) this.emit('update:log', { line: stdout.trim() });
           if (stderr.trim()) this.emit('update:log', { line: stderr.trim() });
         });
 
         this.emit('update:log', { line: `[${service}] Pulling latest image...` });
-        await execAsync(
-          `docker compose -f "${composePath}" pull ${composeService}`,
-          { cwd: sharedDir }
-        ).then(({ stdout, stderr }) => {
+        await execAsync(`docker compose -f "${composePath}" pull ${composeService}`, {
+          cwd: sharedDir,
+        }).then(({ stdout, stderr }) => {
           if (stdout.trim()) this.emit('update:log', { line: stdout.trim() });
           if (stderr.trim()) this.emit('update:log', { line: stderr.trim() });
         });
 
         this.emit('update:log', { line: `[${service}] Starting with new image...` });
-        await execAsync(
-          `docker compose -f "${composePath}" up -d ${composeService}`,
-          { cwd: sharedDir }
-        ).then(({ stdout, stderr }) => {
+        await execAsync(`docker compose -f "${composePath}" up -d ${composeService}`, {
+          cwd: sharedDir,
+        }).then(({ stdout, stderr }) => {
           if (stdout.trim()) this.emit('update:log', { line: stdout.trim() });
           if (stderr.trim()) this.emit('update:log', { line: stderr.trim() });
         });
@@ -307,8 +379,9 @@ export class UpdateService extends EventEmitter {
       }
 
       this.emit('update:complete', { type: 'docker', services });
-    } catch (error: any) {
-      this.emit('update:error', { type: 'docker', error: error.message });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit('update:error', { type: 'docker', error: message });
       throw error;
     } finally {
       this._isInProgress = false;
@@ -333,7 +406,8 @@ export class UpdateService extends EventEmitter {
     cmd: string,
     args: string[],
     cwd: string,
-    detached = false
+    detached = false,
+    envOverrides: Record<string, string> = {}
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const child = spawn(cmd, args, {
@@ -341,16 +415,23 @@ export class UpdateService extends EventEmitter {
         detached,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
+        env: { ...process.env, ...envOverrides },
       });
 
       child.stdout?.on('data', (data: Buffer) => {
-        const lines = data.toString().split('\n').filter((l) => l.trim());
-        lines.forEach((line) => this.emit('update:log', { line }));
+        const lines = data
+          .toString()
+          .split('\n')
+          .filter(l => l.trim());
+        lines.forEach(line => this.emit('update:log', { line }));
       });
 
       child.stderr?.on('data', (data: Buffer) => {
-        const lines = data.toString().split('\n').filter((l) => l.trim());
-        lines.forEach((line) => this.emit('update:log', { line }));
+        const lines = data
+          .toString()
+          .split('\n')
+          .filter(l => l.trim());
+        lines.forEach(line => this.emit('update:log', { line }));
       });
 
       if (detached) {
@@ -359,7 +440,7 @@ export class UpdateService extends EventEmitter {
         return;
       }
 
-      child.on('close', (code) => {
+      child.on('close', code => {
         if (code === 0) {
           resolve();
         } else {
