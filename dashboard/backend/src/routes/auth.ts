@@ -6,9 +6,25 @@ import { validate } from '../middleware/validate';
 import { LoginSchema, RegisterSchema, UpdatePasswordSchema } from '../middleware/schemas';
 import { auditLog } from '../middleware/auditLog';
 import { avatarUpload, AVATARS_URL_PREFIX } from '../middleware/uploadConfig';
+import { generateCaptcha, validateCaptcha } from '../services/captchaService';
 
 export function createAuthRoutes() {
   const router = Router();
+
+  /**
+   * GET /api/auth/captcha
+   * Generate a new Math Captcha challenge.
+   * Returns an SVG image (as text/plain) and a signed token.
+   */
+  router.get('/captcha', (_req: Request, res: Response) => {
+    try {
+      const { token, svg } = generateCaptcha();
+      res.json({ token, svg });
+    } catch (error) {
+      logger.error('Error generating captcha:', error);
+      res.status(500).json({ error: 'Failed to generate captcha' });
+    }
+  });
 
   /**
    * POST /api/auth/register
@@ -21,7 +37,19 @@ export function createAuthRoutes() {
     auditLog('USER_REGISTER'),
     async (req: Request, res: Response): Promise<any> => {
       try {
-        const { email, username, password } = req.body;
+        const { email, username, password, website, captchaToken, captchaSolution } = req.body;
+
+        // --- Honeypot check: bots fill hidden fields, humans never see them ---
+        if (website && website.length > 0) {
+          logger.warn('Bot registration attempt detected via honeypot');
+          // Respond with 200 to not give bots a signal, but don't register
+          return res.status(200).json({ message: 'Registration submitted' });
+        }
+
+        // --- Captcha validation ---
+        if (!validateCaptcha(captchaToken, captchaSolution)) {
+          return res.status(400).json({ error: 'Captcha-Lösung falsch oder abgelaufen. Bitte versuche es erneut.' });
+        }
 
         // Validation is now handled by Zod middleware
         const user = await AuthService.register({
