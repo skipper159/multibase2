@@ -1,22 +1,53 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { UserPlus, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { UserPlus, AlertCircle, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+interface CaptchaData {
+  token: string;
+  svg: string;
+}
 
 export default function Register() {
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  // Honeypot — never shown to users, bots fill it
+  const [website, setWebsite] = useState('');
+  // Captcha state
+  const [captcha, setCaptcha] = useState<CaptchaData | null>(null);
+  const [captchaSolution, setCaptchaSolution] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
   const { register } = useAuth();
 
-  // Note: We don't use navigate here because we want to show the specific success message
-  // about email verification instead of redirecting immediately.
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaSolution('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/captcha`);
+      if (!res.ok) throw new Error('Failed to load captcha');
+      const data: CaptchaData = await res.json();
+      setCaptcha(data);
+    } catch {
+      toast.error('Captcha konnte nicht geladen werden. Bitte Seite neu laden.');
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  // Load captcha on mount
+  useEffect(() => {
+    fetchCaptcha();
+  }, [fetchCaptcha]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,16 +80,27 @@ export default function Register() {
       return;
     }
 
+    if (!captcha) {
+      setError('Bitte warte, bis das Captcha geladen ist.');
+      return;
+    }
+    if (!captchaSolution.trim()) {
+      setError('Bitte löse das Captcha.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await register(email, username, password);
+      await register(email, username, password, captcha.token, captchaSolution);
       setIsSuccess(true);
       toast.success('Registration successful! Please verify your email.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Registration failed';
       setError(message);
       toast.error(message);
+      // Always refresh captcha after a failed attempt
+      fetchCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -116,6 +158,31 @@ export default function Register() {
                 <p className='text-sm text-destructive'>{error}</p>
               </div>
             )}
+
+            {/* Honeypot field — visually hidden, never filled by real users */}
+            <div
+              aria-hidden='true'
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              <label htmlFor='website'>Website</label>
+              <input
+                id='website'
+                name='website'
+                type='text'
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                tabIndex={-1}
+                autoComplete='off'
+              />
+            </div>
 
             <div>
               <label htmlFor='username' className='block text-sm font-medium text-foreground mb-2'>
@@ -196,9 +263,57 @@ export default function Register() {
               </ul>
             </div>
 
+            {/* ── Math Captcha ── */}
+            <div className='space-y-3'>
+              <label className='block text-sm font-medium text-foreground'>
+                Sicherheitsfrage
+                <span className='ml-1 text-xs text-muted-foreground'>(Bitte rechne)</span>
+              </label>
+
+              <div className='flex items-center gap-3'>
+                {/* SVG challenge */}
+                <div className='flex-1 rounded-lg overflow-hidden border border-border bg-[#1e1e2e] flex items-center justify-center h-[60px]'>
+                  {captchaLoading ? (
+                    <Loader2 className='w-5 h-5 animate-spin text-muted-foreground' />
+                  ) : captcha ? (
+                    <span
+                      dangerouslySetInnerHTML={{ __html: captcha.svg }}
+                      aria-label='Captcha-Aufgabe'
+                    />
+                  ) : (
+                    <span className='text-xs text-muted-foreground'>Captcha nicht verfügbar</span>
+                  )}
+                </div>
+
+                {/* Refresh button */}
+                <button
+                  type='button'
+                  onClick={fetchCaptcha}
+                  disabled={captchaLoading || isLoading}
+                  title='Neue Aufgabe laden'
+                  className='p-2 rounded-md border border-border bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50'
+                >
+                  <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <input
+                id='captchaSolution'
+                type='text'
+                inputMode='numeric'
+                value={captchaSolution}
+                onChange={(e) => setCaptchaSolution(e.target.value)}
+                required
+                placeholder='Ergebnis eingeben…'
+                autoComplete='off'
+                disabled={isLoading || captchaLoading}
+                className='w-full px-4 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground'
+              />
+            </div>
+
             <button
               type='submit'
-              disabled={isLoading}
+              disabled={isLoading || captchaLoading || !captcha}
               className='w-full btn-primary flex items-center justify-center gap-2 px-4 py-3 font-medium'
             >
               {isLoading ? (

@@ -18,7 +18,7 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   loginWith2FA: (email: string, password: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
-  register: (email: string, username: string, password: string) => Promise<void>;
+  register: (email: string, username: string, password: string, captchaToken: string, captchaSolution: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   verifyEmail: (token: string) => Promise<void>;
@@ -137,7 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const register = async (email: string, username: string, password: string) => {
+  const register = async (email: string, username: string, password: string, captchaToken: string, captchaSolution: string) => {
     try {
       const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
@@ -145,20 +145,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ email, username, password }),
+        body: JSON.stringify({
+          email,
+          username,
+          password,
+          captchaToken,
+          captchaSolution,
+          website: '', // honeypot — always empty for real users
+        }),
       });
 
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Registration failed');
       }
-
-      // Auto-login after registration is NOT performed if email verification is required
-      // But for now, we'll assume we might want to let them login or show a "check email" message on the UI
-      // The backend register returns the user.
-
-      // If we want to auto-login, we'd need to handle the case where isActive is false or verified is false
-      // For this implementation, we will NOT auto-login, but let the UI handle the success message
     } catch (error) {
       throw error;
     }

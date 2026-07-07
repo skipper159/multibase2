@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogIn, UserPlus, Key, AlertCircle, X, Loader2, Mail, ArrowLeft } from 'lucide-react';
+import { LogIn, UserPlus, Key, AlertCircle, X, Loader2, Mail, ArrowLeft, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AuthView = 'login' | 'register' | 'forgot';
@@ -11,6 +11,13 @@ interface AuthModalProps {
   onClose: () => void;
   initialView?: AuthView;
 }
+
+interface CaptchaData {
+  token: string;
+  svg: string;
+}
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 export default function AuthModal({ isOpen, onClose, initialView = 'login' }: AuthModalProps) {
   const [view, setView] = useState<AuthView>(initialView);
@@ -23,6 +30,12 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
   // Register state
   const [username, setUsername] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [website, setWebsite] = useState(''); // honeypot
+  
+  // Captcha state
+  const [captcha, setCaptcha] = useState<CaptchaData | null>(null);
+  const [captchaSolution, setCaptchaSolution] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -31,6 +44,29 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
 
   const { login, loginWith2FA, requires2FA, pending2FAEmail, register, forgotPassword, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  // Fetch captcha function
+  const fetchCaptcha = useCallback(async () => {
+    setCaptchaLoading(true);
+    setCaptchaSolution('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/captcha`);
+      if (!res.ok) throw new Error('Failed to load captcha');
+      const data: CaptchaData = await res.json();
+      setCaptcha(data);
+    } catch {
+      toast.error('Captcha konnte nicht geladen werden.');
+    } finally {
+      setCaptchaLoading(false);
+    }
+  }, []);
+
+  // Fetch captcha when modal opens on register view, or when view switches to register
+  useEffect(() => {
+    if (isOpen && view === 'register') {
+      fetchCaptcha();
+    }
+  }, [isOpen, view, fetchCaptcha]);
 
   // Handle successful login navigation (when user becomes authenticated without 2FA pending)
   useEffect(() => {
@@ -47,6 +83,9 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
     setUsername('');
     setConfirmPassword('');
     setTwoFactorCode('');
+    setWebsite('');
+    setCaptcha(null);
+    setCaptchaSolution('');
     setError('');
     setForgotSuccess(false);
     setRegisterSuccess(false);
@@ -122,15 +161,28 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
       return;
     }
 
+    if (!captcha) {
+      setError('Bitte warte, bis das Captcha geladen ist.');
+      return;
+    }
+    if (!captchaSolution.trim()) {
+      setError('Bitte löse das Captcha.');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      await register(email, username, password);
+      // Pass the captcha details. The website honeypot is passed automatically via state.
+      // AuthContext will include it in the POST request body.
+      await register(email, username, password, captcha.token, captchaSolution);
       setRegisterSuccess(true);
       toast.success('Registration successful! Please verify your email.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Registration failed';
       setError(message);
+      // Refresh captcha on failed attempt
+      fetchCaptcha();
     } finally {
       setIsLoading(false);
     }
@@ -301,6 +353,31 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
         {/* Register Form */}
         {view === 'register' && !registerSuccess && (
           <form onSubmit={handleRegister} className='space-y-4'>
+            {/* Honeypot field — visually hidden, never filled by real users */}
+            <div
+              aria-hidden='true'
+              style={{
+                position: 'absolute',
+                left: '-9999px',
+                width: '1px',
+                height: '1px',
+                overflow: 'hidden',
+                opacity: 0,
+                pointerEvents: 'none',
+              }}
+            >
+              <label htmlFor='website'>Website</label>
+              <input
+                id='website'
+                name='website'
+                type='text'
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+                tabIndex={-1}
+                autoComplete='off'
+              />
+            </div>
+
             <div>
               <label className='block text-sm font-medium text-foreground mb-2'>Username</label>
               <input
@@ -355,10 +432,58 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
               <p className={/[^a-zA-Z0-9]/.test(password) ? 'text-green-500' : ''}>• Special character</p>
             </div>
 
+            {/* ── Math Captcha ── */}
+            <div className='space-y-2 pt-1'>
+              <label className='block text-sm font-medium text-foreground'>
+                Sicherheitsfrage <span className='text-xs text-muted-foreground'>(Bitte berechnen)</span>
+              </label>
+              
+              <div className='flex items-center gap-2'>
+                {/* SVG display */}
+                <div className='flex-1 rounded-md overflow-hidden border border-border bg-[#1e1e2e] flex items-center justify-center h-[50px]'>
+                  {captchaLoading ? (
+                    <Loader2 className='w-4 h-4 animate-spin text-muted-foreground' />
+                  ) : captcha ? (
+                    <span 
+                      dangerouslySetInnerHTML={{ __html: captcha.svg }} 
+                      className='block' 
+                      style={{ transform: 'scale(0.85)', transformOrigin: 'center' }}
+                    />
+                  ) : (
+                    <span className='text-xs text-muted-foreground'>Fehler beim Laden</span>
+                  )}
+                </div>
+
+                {/* Refresh button */}
+                <button
+                  type='button'
+                  onClick={fetchCaptcha}
+                  disabled={captchaLoading || isLoading}
+                  title='Neue Aufgabe laden'
+                  className='p-2.5 rounded-md border border-border bg-secondary hover:bg-secondary/80 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 h-[50px] w-[50px] flex items-center justify-center'
+                >
+                  <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <input
+                id='captchaSolution'
+                type='text'
+                inputMode='numeric'
+                value={captchaSolution}
+                onChange={(e) => setCaptchaSolution(e.target.value)}
+                required
+                placeholder='Ergebnis eingeben…'
+                autoComplete='off'
+                disabled={isLoading || captchaLoading}
+                className='w-full px-4 py-2 bg-input border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground'
+              />
+            </div>
+
             <button
               type='submit'
-              disabled={isLoading}
-              className='w-full btn-primary flex items-center justify-center gap-2 py-3'
+              disabled={isLoading || captchaLoading || !captcha}
+              className='w-full btn-primary flex items-center justify-center gap-2 py-3 mt-2'
             >
               {isLoading ? <Loader2 className='w-5 h-5 animate-spin' /> : <UserPlus className='w-5 h-5' />}
               Sign Up

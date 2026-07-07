@@ -23,6 +23,12 @@ export const RegisterSchema = z.object({
     .regex(/[a-z]/, 'Passwort muss mindestens einen Kleinbuchstaben enthalten')
     .regex(/[0-9]/, 'Passwort muss mindestens eine Zahl enthalten')
     .regex(/[^a-zA-Z0-9]/, 'Passwort muss mindestens ein Sonderzeichen enthalten'),
+  // Honeypot — must be empty; bots typically auto-fill every field
+  website: z.literal('').optional(),
+  // Math Captcha — the signed token returned by GET /api/auth/captcha
+  captchaToken: z.string().min(1, 'Captcha-Token fehlt'),
+  // The user's typed answer to the math challenge
+  captchaSolution: z.string().min(1, 'Bitte löse das Captcha'),
 });
 
 export const UpdateUserSchema = z.object({
