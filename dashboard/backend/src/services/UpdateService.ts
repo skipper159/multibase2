@@ -262,6 +262,9 @@ export class UpdateService extends EventEmitter {
       );
       // Prisma-Client explizit generieren (durch --ignore-scripts übersprungen)
       await this.runCommand('npx', ['prisma', 'generate'], backendDir);
+      // Backend kompilieren (TypeScript -> JavaScript)
+      this.emit('update:log', { line: 'Building backend...' });
+      await this.runCommand('npm', ['run', 'build'], backendDir);
       this.emitStepDone('backend install', 1);
 
       const frontendDir = path.join(this.rootDir, 'dashboard', 'frontend');
