@@ -875,10 +875,10 @@ run_db_migrations() {
     fi
     step_ok "Database migrations applied"
 
-    # Prune devDependencies now that prisma CLI is no longer needed
-    cd "$INSTALL_DIR/dashboard/backend"
-    sudo -u "$INSTALL_USER" npm prune --omit=dev >> "$LOG_FILE" 2>&1
-    step_ok "Backend devDependencies removed"
+    # Prune devDependencies omitted to prevent empty node_modules under NPM 10+
+    # cd "$INSTALL_DIR/dashboard/backend"
+    # sudo -u "$INSTALL_USER" npm prune --omit=dev >> "$LOG_FILE" 2>&1
+    step_ok "Backend dependencies preserved"
 }
 
 # =============================================================================
@@ -1858,8 +1858,8 @@ run_update() {
         tail -20 "$LOG_FILE" >&2
         exit 1
     fi
-    # Prune devDependencies now that prisma CLI is no longer needed
-    sudo -u "$INSTALL_USER" npm prune --omit=dev >> "$LOG_FILE" 2>&1
+    # Prune devDependencies omitted to prevent empty node_modules under NPM 10+
+    # sudo -u "$INSTALL_USER" npm prune --omit=dev >> "$LOG_FILE" 2>&1
     step_ok "Migrations applied"
 
     step "Rebuilding frontend..."
