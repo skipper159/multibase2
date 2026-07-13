@@ -114,6 +114,7 @@ dist-ssr/
 coverage/
 *.lcov
 .nyc_output/
+Testprojekt/
 
 # Cache directories
 .cache/
