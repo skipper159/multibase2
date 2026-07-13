@@ -7,6 +7,8 @@
 
 **Multibase** is a hybrid orchestration platform combining a Node.js management API with Python-based automation. It is designed as a **"Single Pane of Glass"** for managing self-hosted Supabase instances, leveraging the standard Docker Compose runtime for reliability.
 
+> 🛠️ **Check out the [Multibase System Checker](https://github.com/skipper159/Multibase-Checker)** – an interactive test app to verify all core functions (Database, Storage, Edge Functions, Realtime, MCP) of your instances!
+
 ---
 
 ## 🎬 Preview & Feedback
@@ -34,37 +36,37 @@ The interactive wizard handles everything: dependencies, domains, SSL, admin acc
 
 All features from v1.0 to v1.8 are **released and production-ready**. Click a version to open its detailed feature document.
 
-| Feature | Version | Docs |
-| :--- | :---: | :---: |
-| Multi-Instance Docker Orchestration | v1.0 | [→](Markdowns/README.md) |
-| Auth & Session Management (JWT, Bcrypt, 2FA) | v1.0 | [→](Markdowns/README.md) |
-| Backup & Restore (S3, Scheduling, PITR) | v1.1 | [→](Markdowns/Readme1_1_feature.md) |
-| Monitoring, Alerts & Audit Logs | v1.1 | [→](Markdowns/Readme1_1_feature.md) |
-| Storage Manager (Upload, Signed URLs, Folders) | v1.2 | [→](Markdowns/Readme1_2_Feature.md) |
-| Instance Cloning & Snapshots | v1.2 | [→](Markdowns/Readme1_2_Feature.md) |
-| Cloud Architecture (Shared Services, ~75% RAM savings) | v1.3 | [→](Markdowns/Readme1_3_Feature.md) |
-| Kong → Nginx Gateway Migration | v1.3 | [→](Markdowns/Readme1_3_Feature.md) |
-| AI Chat Agent (30+ Tools, Multi-Provider) | v1.3 | [→](Markdowns/Readme1_3_Feature.md) |
-| Workspace Page (Studio, API Keys, SMTP) | v1.3 | [→](Markdowns/Readme1_3_Feature.md) |
-| Multi-Tenancy / Organizations / RBAC | v1.4 | [→](Markdowns/Readme1_4_Feature.md) |
-| GraphQL API Playground (pg_graphql) | v1.5 | [→](Markdowns/Readme1_5_Feature.md) |
-| Database Webhooks (pg_net) | v1.5 | [→](Markdowns/Readme1_5_Feature.md) |
-| Cron Job Manager (pg_cron) | v1.5 | [→](Markdowns/Readme1_5_Feature.md) |
-| AI & Vectors (pgvector, Semantic Search) | v1.5 | [→](Markdowns/Readme1_5_Feature.md) |
-| Message Queues (pgmq) | v1.5 | [→](Markdowns/Readme1_5_Feature.md) |
-| Auth Extensions (Phone/CAPTCHA/SAML/Social Login) | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Custom Domains per Tenant | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Environment Labels + Clone Shortcuts | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Storage: Tus Resumable Uploads + Nginx CDN Cache | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Vault Secrets UI (pgsodium) | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Network Restrictions (IP Whitelist, Rate Limiting) | v1.6 | [→](Markdowns/Readme1_6_Feature.md) |
-| Edge Functions IDE (CodeMirror, TypeScript, Test Runner) | v1.7 | [→](Markdowns/Readme1_7_Feature.md) |
-| Realtime Dashboard (Channels, Presence, Live Stats) | v1.7 | [→](Markdowns/Readme1_7_Feature.md) |
-| Log Drains (Webhook Export, json/ndjson) | v1.7 | [→](Markdowns/Readme1_7_Feature.md) |
-| Read Replicas (External PostgreSQL Registration) | v1.7 | [→](Markdowns/Readme1_7_Feature.md) |
-| MCP Server (12 Tools, JSON-RPC 2.0) | v1.7 | [→](Markdowns/Readme1_7_Feature.md) |
-| Extension Marketplace (51 Extensions) | v1.8 | ✅ |
-| Feedback Feature (Public API + Admin Settings) | v1.8 | ✅ |
+| Feature                                                  | Version |                Docs                 |
+| :------------------------------------------------------- | :-----: | :---------------------------------: |
+| Multi-Instance Docker Orchestration                      |  v1.0   |      [→](Markdowns/README.md)       |
+| Auth & Session Management (JWT, Bcrypt, 2FA)             |  v1.0   |      [→](Markdowns/README.md)       |
+| Backup & Restore (S3, Scheduling, PITR)                  |  v1.1   | [→](Markdowns/Readme1_1_feature.md) |
+| Monitoring, Alerts & Audit Logs                          |  v1.1   | [→](Markdowns/Readme1_1_feature.md) |
+| Storage Manager (Upload, Signed URLs, Folders)           |  v1.2   | [→](Markdowns/Readme1_2_Feature.md) |
+| Instance Cloning & Snapshots                             |  v1.2   | [→](Markdowns/Readme1_2_Feature.md) |
+| Cloud Architecture (Shared Services, ~75% RAM savings)   |  v1.3   | [→](Markdowns/Readme1_3_Feature.md) |
+| Kong → Nginx Gateway Migration                           |  v1.3   | [→](Markdowns/Readme1_3_Feature.md) |
+| AI Chat Agent (30+ Tools, Multi-Provider)                |  v1.3   | [→](Markdowns/Readme1_3_Feature.md) |
+| Workspace Page (Studio, API Keys, SMTP)                  |  v1.3   | [→](Markdowns/Readme1_3_Feature.md) |
+| Multi-Tenancy / Organizations / RBAC                     |  v1.4   | [→](Markdowns/Readme1_4_Feature.md) |
+| GraphQL API Playground (pg_graphql)                      |  v1.5   | [→](Markdowns/Readme1_5_Feature.md) |
+| Database Webhooks (pg_net)                               |  v1.5   | [→](Markdowns/Readme1_5_Feature.md) |
+| Cron Job Manager (pg_cron)                               |  v1.5   | [→](Markdowns/Readme1_5_Feature.md) |
+| AI & Vectors (pgvector, Semantic Search)                 |  v1.5   | [→](Markdowns/Readme1_5_Feature.md) |
+| Message Queues (pgmq)                                    |  v1.5   | [→](Markdowns/Readme1_5_Feature.md) |
+| Auth Extensions (Phone/CAPTCHA/SAML/Social Login)        |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Custom Domains per Tenant                                |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Environment Labels + Clone Shortcuts                     |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Storage: Tus Resumable Uploads + Nginx CDN Cache         |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Vault Secrets UI (pgsodium)                              |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Network Restrictions (IP Whitelist, Rate Limiting)       |  v1.6   | [→](Markdowns/Readme1_6_Feature.md) |
+| Edge Functions IDE (CodeMirror, TypeScript, Test Runner) |  v1.7   | [→](Markdowns/Readme1_7_Feature.md) |
+| Realtime Dashboard (Channels, Presence, Live Stats)      |  v1.7   | [→](Markdowns/Readme1_7_Feature.md) |
+| Log Drains (Webhook Export, json/ndjson)                 |  v1.7   | [→](Markdowns/Readme1_7_Feature.md) |
+| Read Replicas (External PostgreSQL Registration)         |  v1.7   | [→](Markdowns/Readme1_7_Feature.md) |
+| MCP Server (12 Tools, JSON-RPC 2.0)                      |  v1.7   | [→](Markdowns/Readme1_7_Feature.md) |
+| Extension Marketplace (51 Extensions)                    |  v1.8   |                 ✅                  |
+| Feedback Feature (Public API + Admin Settings)           |  v1.8   |                 ✅                  |
 
 > 🔮 **Planned features (v2.0+):** Multi-Region Control Plane, GitOps/Terraform Provider, AI-Powered Database Advisor, Reseller & White-Label, Database Branching, Management SDK/CLI, and more — see the full [Feature Roadmap →](Markdowns/4.0.0_Feature_Roadmap.md)
 
@@ -72,16 +74,16 @@ All features from v1.0 to v1.8 are **released and production-ready**. Click a ve
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-| :--- | :--- |
-| **Dashboard Backend** | Node.js 20+, Express, TypeScript |
-| **Dashboard Database** | SQLite via Prisma ORM |
-| **Dashboard Frontend** | React 19, Vite, Radix UI |
+| Layer                        | Technology                                       |
+| :--------------------------- | :----------------------------------------------- |
+| **Dashboard Backend**        | Node.js 20+, Express, TypeScript                 |
+| **Dashboard Database**       | SQLite via Prisma ORM                            |
+| **Dashboard Frontend**       | React 19, Vite, Radix UI                         |
 | **Infrastructure Scripting** | Python 3 (project generation, secret management) |
-| **Container Runtime** | Docker + Docker Compose |
-| **API Gateway** | Nginx (replaces per-tenant Kong from v1.3) |
-| **Process Manager** | PM2 |
-| **SSL** | Certbot (Let's Encrypt) |
+| **Container Runtime**        | Docker + Docker Compose                          |
+| **API Gateway**              | Nginx (replaces per-tenant Kong from v1.3)       |
+| **Process Manager**          | PM2                                              |
+| **SSL**                      | Certbot (Let's Encrypt)                          |
 
 ---
 
@@ -89,11 +91,11 @@ All features from v1.0 to v1.8 are **released and production-ready**. Click a ve
 
 Multibase has three layers:
 
-| Layer | What it does |
-| :--- | :--- |
-| **Management Layer** | Node.js + Express dashboard. SQLite stores metadata & audit logs. Spawns Python subprocesses for infrastructure tasks. Communicates with Docker via `dockerode`. |
-| **Infrastructure Layer** | Each Supabase instance lives in `projects/<name>/` with its own `.env`, `docker-compose.yml`, and `volumes/` directory. Backup = tar the directory. |
-| **Runtime Layer** | Instances run as isolated Docker Compose stacks on dedicated bridge networks, with a central port registry preventing conflicts. |
+| Layer                    | What it does                                                                                                                                                     |
+| :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Management Layer**     | Node.js + Express dashboard. SQLite stores metadata & audit logs. Spawns Python subprocesses for infrastructure tasks. Communicates with Docker via `dockerode`. |
+| **Infrastructure Layer** | Each Supabase instance lives in `projects/<name>/` with its own `.env`, `docker-compose.yml`, and `volumes/` directory. Backup = tar the directory.              |
+| **Runtime Layer**        | Instances run as isolated Docker Compose stacks on dedicated bridge networks, with a central port registry preventing conflicts.                                 |
 
 ### Cloud Architecture (v1.3+ — Shared Infrastructure)
 
@@ -103,11 +105,11 @@ Instead of running 13 containers per project, heavy services are shared across a
 
 **Per-Tenant Services** (5 containers each): `auth`, `rest`, `realtime`, `storage`, `edge-functions`
 
-| Metric | Classic (10 Projects) | Cloud (10 Projects) | Saving |
-| :--- | :---: | :---: | :---: |
-| **Containers** | 130 | 58 | **-55%** |
-| **RAM (idle)** | ~20 GB | ~5 GB | **-75%** |
-| **PostgreSQL instances** | 10 | 1 | **-90%** |
+| Metric                   | Classic (10 Projects) | Cloud (10 Projects) |  Saving  |
+| :----------------------- | :-------------------: | :-----------------: | :------: |
+| **Containers**           |          130          |         58          | **-55%** |
+| **RAM (idle)**           |        ~20 GB         |        ~5 GB        | **-75%** |
+| **PostgreSQL instances** |          10           |          1          | **-90%** |
 
 ---
 
@@ -317,13 +319,13 @@ For full documentation see [Features v1.7 →](Markdowns/Readme1_7_Feature.md)
 
 The [`Testprojekt/`](Testprojekt/) folder contains an **interactive test web app** that verifies all core Multibase features end-to-end:
 
-| Area | Tests | What it checks |
-| :--- | :---: | :--- |
-| **MCP Connection** | 5 | Server info, tool listing, tool calls (`list_instances`, `get_instance`), system overview |
-| **Database (CRUD)** | 6 | Create table → Insert → Read → Update → Delete → Cleanup |
-| **Storage** | 6 | Create bucket → Upload → List → Download+Verify → Public URL → Cleanup |
-| **Edge Functions** | 3 | List functions, invoke main function, fetch logs |
-| **Realtime** | 4 | Fetch config/stats, subscribe+broadcast test, connection info |
+| Area                | Tests | What it checks                                                                            |
+| :------------------ | :---: | :---------------------------------------------------------------------------------------- |
+| **MCP Connection**  |   5   | Server info, tool listing, tool calls (`list_instances`, `get_instance`), system overview |
+| **Database (CRUD)** |   6   | Create table → Insert → Read → Update → Delete → Cleanup                                  |
+| **Storage**         |   6   | Create bucket → Upload → List → Download+Verify → Public URL → Cleanup                    |
+| **Edge Functions**  |   3   | List functions, invoke main function, fetch logs                                          |
+| **Realtime**        |   4   | Fetch config/stats, subscribe+broadcast test, connection info                             |
 
 Quick start:
 
@@ -344,33 +346,33 @@ See [Testprojekt/README.md](Testprojekt/README.md) for full setup instructions.
 
 ### Features & Roadmap (`/Markdowns`)
 
-| Document | Description | Status |
-| :--- | :--- | :---: |
-| [Feature Guide v1.0](Markdowns/README.md) | Complete manual for the initial production version | ✅ Active |
-| [Features v1.1](Markdowns/Readme1_1_feature.md) | User Mgmt, Alerts, Backups, Security, Templates, SMTP | ✅ Released |
-| [Features v1.2](Markdowns/Readme1_2_Feature.md) | Storage Manager, Advanced Monitoring, Instance Cloning | ✅ Released |
-| [Features v1.3](Markdowns/Readme1_3_Feature.md) | AI Chat, Cloud Arch, Kong→Nginx, Workspace | ✅ Released |
-| [Features v1.4](Markdowns/Readme1_4_Feature.md) | Multi-Tenancy, Organisations, Role-Based Access | ✅ Released |
-| [Features v1.5](Markdowns/Readme1_5_Feature.md) | GraphQL Playground, Webhooks, Cron, pgvector, pgmq | ✅ Released |
-| [Features v1.6](Markdowns/Readme1_6_Feature.md) | Custom Domains, Vault, Network Restrictions, Tus Upload | ✅ Released |
-| [Features v1.7](Markdowns/Readme1_7_Feature.md) | Functions IDE, Read Replicas, Log Drains, MCP Server | ✅ Released |
-| [Feature Roadmap v2.0+](Markdowns/4.0.0_Feature_Roadmap.md) | Multi-Region, GitOps, AI Advisor, White-Label, Branching | 🔮 Planned |
-| [Cloud Architecture](Markdowns/CLOUD_ARCHITECTURE.md) | Shared Infra design & implementation log (Phase 0–8) | 📐 Reference |
-| [Kong→Nginx Migration](Markdowns/KONG_NGINX_MIGRATION.md) | Complete migration plan & post-migration status | ✅ Done |
-| [AI Chat Agent](Markdowns/AIchat.md) | Deep-dive: AI assistant with 30+ tools & multi-provider | 🤖 Tech |
-| [Version Overview](Markdowns/VERSION_OVERVIEW.md) | High-level summary of the update strategy | ℹ️ Info |
-| [Scripts Reference](Markdowns/SCRIPTS.md) | Guide to the maintenance scripts in the root directory | 🔧 Tech |
+| Document                                                    | Description                                              |    Status    |
+| :---------------------------------------------------------- | :------------------------------------------------------- | :----------: |
+| [Feature Guide v1.0](Markdowns/README.md)                   | Complete manual for the initial production version       |  ✅ Active   |
+| [Features v1.1](Markdowns/Readme1_1_feature.md)             | User Mgmt, Alerts, Backups, Security, Templates, SMTP    | ✅ Released  |
+| [Features v1.2](Markdowns/Readme1_2_Feature.md)             | Storage Manager, Advanced Monitoring, Instance Cloning   | ✅ Released  |
+| [Features v1.3](Markdowns/Readme1_3_Feature.md)             | AI Chat, Cloud Arch, Kong→Nginx, Workspace               | ✅ Released  |
+| [Features v1.4](Markdowns/Readme1_4_Feature.md)             | Multi-Tenancy, Organisations, Role-Based Access          | ✅ Released  |
+| [Features v1.5](Markdowns/Readme1_5_Feature.md)             | GraphQL Playground, Webhooks, Cron, pgvector, pgmq       | ✅ Released  |
+| [Features v1.6](Markdowns/Readme1_6_Feature.md)             | Custom Domains, Vault, Network Restrictions, Tus Upload  | ✅ Released  |
+| [Features v1.7](Markdowns/Readme1_7_Feature.md)             | Functions IDE, Read Replicas, Log Drains, MCP Server     | ✅ Released  |
+| [Feature Roadmap v2.0+](Markdowns/4.0.0_Feature_Roadmap.md) | Multi-Region, GitOps, AI Advisor, White-Label, Branching |  🔮 Planned  |
+| [Cloud Architecture](Markdowns/CLOUD_ARCHITECTURE.md)       | Shared Infra design & implementation log (Phase 0–8)     | 📐 Reference |
+| [Kong→Nginx Migration](Markdowns/KONG_NGINX_MIGRATION.md)   | Complete migration plan & post-migration status          |   ✅ Done    |
+| [AI Chat Agent](Markdowns/AIchat.md)                        | Deep-dive: AI assistant with 30+ tools & multi-provider  |   🤖 Tech    |
+| [Version Overview](Markdowns/VERSION_OVERVIEW.md)           | High-level summary of the update strategy                |   ℹ️ Info    |
+| [Scripts Reference](Markdowns/SCRIPTS.md)                   | Guide to the maintenance scripts in the root directory   |   🔧 Tech    |
 
 ### Deployment & Operations
 
-| Document | Description |
-| :--- | :--- |
-| [Deployment Guide](deployment/README.md) | Primary manual for automated server installation |
-| [AWS Deployment](docs/AWS_DEPLOYMENT.md) | Specific guide for AWS VPC/EC2 setups |
-| [Port Reference](docs/PORT_REFERENCE.md) | Complete list of all TCP/UDP ports used by the stack |
-| [Realtime Config](docs/REALTIME_CONFIG.md) | Deep dive into WebSocket/Realtime service configuration |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Solutions for common Docker, Kong, and Database issues |
-| [Cleanup Guide](Markdowns/CLEANUP_RECOMMENDATIONS.md) | Best practices for removing unused orphans and volumes |
+| Document                                              | Description                                             |
+| :---------------------------------------------------- | :------------------------------------------------------ |
+| [Deployment Guide](deployment/README.md)              | Primary manual for automated server installation        |
+| [AWS Deployment](docs/AWS_DEPLOYMENT.md)              | Specific guide for AWS VPC/EC2 setups                   |
+| [Port Reference](docs/PORT_REFERENCE.md)              | Complete list of all TCP/UDP ports used by the stack    |
+| [Realtime Config](docs/REALTIME_CONFIG.md)            | Deep dive into WebSocket/Realtime service configuration |
+| [Troubleshooting](docs/TROUBLESHOOTING.md)            | Solutions for common Docker, Kong, and Database issues  |
+| [Cleanup Guide](Markdowns/CLEANUP_RECOMMENDATIONS.md) | Best practices for removing unused orphans and volumes  |
 
 ---
 
