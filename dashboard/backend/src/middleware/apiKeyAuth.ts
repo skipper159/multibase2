@@ -68,7 +68,10 @@ export const apiKeyAuth = async (req: Request, _res: Response, next: NextFunctio
 
     // Attach to request
     (req as any).user = user;
-    (req as any).apiKey = keyRecord;
+    (req as any).apiKey = {
+      id: keyRecord.id,
+      scopes: typeof keyRecord.scopes === 'string' ? JSON.parse(keyRecord.scopes) : keyRecord.scopes,
+    };
 
     logger.info(`Mainicated via API Key: ${keyRecord.name} (User: ${user.username})`);
 

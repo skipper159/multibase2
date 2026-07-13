@@ -5,14 +5,20 @@
 # ============================================================
 
 # --- API Key Validation ---
-map $http_apikey $apikey_valid_{{TENANT_ID}} {
+# Fallback to query parameter if header is missing (needed for WebSockets/Realtime)
+map $http_apikey $api_key_used_{{TENANT_ID}} {
+    default $http_apikey;
+    ""      $arg_apikey;
+}
+
+map $api_key_used_{{TENANT_ID}} $apikey_valid_{{TENANT_ID}} {
     default         0;
     "{{ANON_KEY}}"          1;
     "{{SERVICE_ROLE_KEY}}"  1;
 }
 
 # ACL: Is the key an admin key (service_role)?
-map $http_apikey $is_admin_{{TENANT_ID}} {
+map $api_key_used_{{TENANT_ID}} $is_admin_{{TENANT_ID}} {
     default                 0;
     "{{SERVICE_ROLE_KEY}}"  1;
 }
@@ -182,7 +188,7 @@ map $http_apikey $is_admin_{{TENANT_ID}} {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
+        proxy_set_header Host realtime-dev;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -200,7 +206,7 @@ map $http_apikey $is_admin_{{TENANT_ID}} {
         add_header 'Access-Control-Allow-Credentials' 'true' always;
         rewrite ^/realtime/v1/(.*)$ /$1 break;
         proxy_pass http://$up_realtime;
-        proxy_set_header Host $host;
+        proxy_set_header Host realtime-dev;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

@@ -19,6 +19,8 @@ import {
   Bot,
   Puzzle,
   Lock,
+  Play,
+  Pause,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import AuthModal from '../components/AuthModal';
@@ -65,6 +67,139 @@ const FeatureCard = ({
   </div>
 );
 
+const TOUR_TABS = [
+  {
+    id: 'overview',
+    name: 'Overview',
+    title: 'Unified Dashboard Overview',
+    description: 'Monitor system health, CPU/Memory load, and active containers across all your Supabase projects in one place.',
+    src: '/screenshots/dashboard_overview.png',
+    icon: LayoutDashboard,
+    color: 'text-brand-500 bg-brand-500/10 border-brand-500/30'
+  },
+  {
+    id: 'workspace-orgs',
+    name: 'Organisations',
+    title: 'Workspace Organisations',
+    description: 'Manage multiple organisations, team members, access roles, and view shared billing or API credentials.',
+    src: '/screenshots/workspace_organisations.png',
+    icon: Layers,
+    color: 'text-sky-500 bg-sky-500/10 border-sky-500/30'
+  },
+  {
+    id: 'workspace-projects',
+    name: 'Projects List',
+    title: 'Organisation Projects Overview',
+    description: 'View and manage all active database projects belonging to your selected organisation in a structured grid.',
+    src: '/screenshots/workspace_projects.png',
+    icon: Puzzle,
+    color: 'text-teal-500 bg-teal-500/10 border-teal-500/30'
+  },
+  {
+    id: 'project-workspace',
+    name: 'Project Workspace',
+    title: 'Project Backend & Settings Workspace',
+    description: 'Deep dive into an individual project workspace. Manage databases, custom schemas, APIs, hosting security, and more.',
+    src: '/screenshots/project_tab_overview.png',
+    icon: Database,
+    color: 'text-blue-500 bg-blue-500/10 border-blue-500/30',
+    subTabs: [
+      {
+        id: 'project-overview',
+        name: 'Overview',
+        title: 'Project Overview Metrics',
+        description: 'View real-time charts for Postgres database load, active API connections, auth logins, and storage space.',
+        src: '/screenshots/project_tab_overview.png'
+      },
+      {
+        id: 'project-auth',
+        name: 'Auth',
+        title: 'Project Authentication Settings',
+        description: 'Configure GoTrue auth providers (Github, Google, Discord), manage active users, customize email templates, and RLS policies.',
+        src: '/screenshots/project_tab_auth.png'
+      },
+      {
+        id: 'project-database',
+        name: 'Database',
+        title: 'SQL Editor & Table Manager',
+        description: 'Inspect schemas, run raw SQL queries, explore data tables, edit database roles, and view Postgres status.',
+        src: '/screenshots/project_tab_database.png'
+      },
+      {
+        id: 'project-storage',
+        name: 'Storage',
+        title: 'S3-compatible Object Storage',
+        description: 'Create storage buckets, upload files/assets, inspect files, and define bucket policies and caching headers.',
+        src: '/screenshots/project_tab_storage.png'
+      },
+      {
+        id: 'project-rls',
+        name: 'RLS Policies',
+        title: 'Row Level Security',
+        description: 'Define fine-grained database access rules. Toggle RLS on postgres tables and manage custom SQL security policies.',
+        src: '/screenshots/project_tab_rls.png'
+      },
+      {
+        id: 'project-functions',
+        name: 'Edge Functions',
+        title: 'Serverless Deno Edge Functions',
+        description: 'Deploy, test, and manage serverless typescript functions globally. Inspect request metrics and functions endpoints.',
+        src: '/screenshots/project_tab_functions.png'
+      },
+      {
+        id: 'project-cron',
+        name: 'Cron Jobs',
+        title: 'Database pg_cron Schedules',
+        description: 'Create and run scheduled Postgres functions and cron tasks. Inspect schedules, active tasks, and execution logs.',
+        src: '/screenshots/project_tab_cron.png'
+      },
+      {
+        id: 'project-logs',
+        name: 'Logs & Log Drains',
+        title: 'System Audit Logs',
+        description: 'Monitor request logs, authentication errors, slow database queries, database migrations, and configure external log drains.',
+        src: '/screenshots/project_tab_logs.png'
+      }
+    ]
+  },
+  {
+    id: 'marketplace',
+    name: 'Marketplace',
+    title: 'Extension Marketplace',
+    description: 'Supercharge any project with Postgres extensions — vector search, message queues, scheduled jobs, all installable in one click.',
+    src: '/screenshots/marketplace_extensions.png',
+    icon: Server,
+    color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
+  },
+  {
+    id: 'backups',
+    name: 'Backups',
+    title: 'Automated Backup System',
+    description: 'Schedule automated database backups and configure multiple backup destinations like MinIO, AWS S3, or Cloudflare R2.',
+    src: '/screenshots/backups.png',
+    icon: Archive,
+    color: 'text-amber-500 bg-amber-500/10 border-amber-500/30'
+  },
+  {
+    id: 'ai-assistant',
+    name: 'AI Assistant',
+    title: 'Your AI Database Engineer',
+    description: 'Chat with your databases using natural language, execute safe schema migrations, inspect tables, and automate operations.',
+    src: '/screenshots/ai_assistant_docs.png',
+    icon: Bot,
+    color: 'text-violet-500 bg-violet-500/10 border-violet-500/30'
+  },
+  {
+    id: 'walkthrough',
+    name: '🎥 Walkthrough Video',
+    title: 'Interactive Walkthrough Video',
+    description: 'Watch a step-by-step recording of the Multibase dashboard in action, showing the real navigation flow.',
+    src: '/screenshots/walkthrough_flow.webp',
+    icon: Play,
+    color: 'text-pink-500 bg-pink-500/10 border-pink-500/30'
+  }
+];
+
 const LandingPage = () => {
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
@@ -72,6 +207,9 @@ const LandingPage = () => {
   const [authView, setAuthView] = useState<'login' | 'register' | 'forgot'>('login');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [feedbackEnabled, setFeedbackEnabled] = useState(true);
+  const [activeTab, setActiveTab] = useState(0);
+  const [activeSubTab, setActiveSubTab] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
 
   useEffect(() => {
     fetch(`${API_BASE_URL}/api/settings/public`)
@@ -79,6 +217,20 @@ const LandingPage = () => {
       .then(d => setFeedbackEnabled(d.feedbackEnabled ?? true))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const interval = setInterval(() => {
+      setActiveTab(prev => {
+        const next = (prev + 1) % TOUR_TABS.length;
+        setActiveSubTab(0);
+        return next;
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [isPlaying]);
 
   const openAuth = (view: 'login' | 'register' | 'forgot') => {
     setAuthView(view);
@@ -289,6 +441,172 @@ const LandingPage = () => {
                   Feedback
                 </SupabaseButton>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Interactive Product Showcase Tour */}
+        <div className="container mx-auto px-4 sm:px-6 pb-24 -mt-4 relative z-10 animate-fade-in-up [animation-delay:400ms]">
+          <div className="max-w-5xl mx-auto">
+            {/* Header/Intro */}
+            <div className="text-center mb-8">
+              <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+                Erleben Sie Multibase in Aktion
+              </h2>
+              <p className="text-muted-foreground text-sm max-w-xl mx-auto mt-2">
+                Klicken Sie sich durch die verschiedenen Bereiche des Dashboards oder sehen Sie sich den geführten Walkthrough an.
+              </p>
+            </div>
+
+            {/* Tab Navigation buttons */}
+            <div className="flex flex-wrap justify-center gap-2 mb-6">
+              {TOUR_TABS.map((tab, idx) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === idx;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setActiveTab(idx);
+                      setActiveSubTab(0);
+                      setIsPlaying(false); // Stop auto-rotation when user clicks
+                    }}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm transition-all duration-200 ${
+                      isActive
+                        ? `${tab.color} font-semibold shadow-[0_0_15px_-3px_rgba(62,207,142,0.15)] ring-1 ring-white/10`
+                        : 'border-white/5 bg-white/[0.02] text-muted-foreground hover:text-foreground hover:bg-white/[0.05] hover:border-white/10'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{tab.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Sub-tab Navigation (if active tab has sub-tabs) */}
+            {TOUR_TABS[activeTab].subTabs && (
+              <div className="flex flex-wrap justify-center gap-1.5 mb-6 py-1.5 px-2 bg-white/[0.01] border border-white/5 rounded-lg max-w-3xl mx-auto">
+                {TOUR_TABS[activeTab].subTabs.map((subTab, idx) => {
+                  const isSubActive = activeSubTab === idx;
+                  return (
+                    <button
+                      key={subTab.id}
+                      onClick={() => {
+                        setActiveSubTab(idx);
+                        setIsPlaying(false);
+                      }}
+                      className={`px-3 py-1 rounded-md text-xs transition-all duration-150 ${
+                        isSubActive
+                          ? 'bg-brand-500/10 text-brand-400 border border-brand-500/20 font-medium'
+                          : 'border border-transparent text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {subTab.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Interactive Browser Device Mockup Frame */}
+            <div 
+              className="relative group rounded-xl border border-white/10 bg-[#0B0F17]/90 p-1.5 sm:p-2 shadow-[0_0_50px_-12px_rgba(0,0,0,0.8)] transition-all duration-500 hover:border-brand-500/30 hover:shadow-[0_0_50px_-12px_rgba(62,207,142,0.15)]"
+              onMouseEnter={() => setIsPlaying(false)}
+              onMouseLeave={() => {
+                // Resume autoplay if they were playing
+                setIsPlaying(true);
+              }}
+            >
+              {/* Browser Header Bar */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-white/5 bg-white/[0.02] rounded-t-lg">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/60" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+                </div>
+                <div className="flex items-center gap-1 px-4 py-0.5 rounded bg-white/5 border border-white/5 text-[11px] text-muted-foreground w-1/2 justify-center font-mono select-none">
+                  <span className="text-brand-500/70">https://</span>
+                  <span>
+                    multibase.tyto-design.de/dashboard/{TOUR_TABS[activeTab].id}
+                    {TOUR_TABS[activeTab].subTabs ? `/${TOUR_TABS[activeTab].subTabs[activeSubTab].id}` : ''}
+                  </span>
+                </div>
+                <div className="w-12" /> {/* spacer */}
+              </div>
+
+              {/* Viewport content */}
+              <div className="relative aspect-[16/10] w-full overflow-hidden bg-black/40 rounded-b-lg">
+                {TOUR_TABS.map((tab, idx) => {
+                  const isParentActive = activeTab === idx;
+                  if (tab.subTabs) {
+                    return tab.subTabs.map((subTab, subIdx) => {
+                      const isSubActive = isParentActive && activeSubTab === subIdx;
+                      return (
+                        <div
+                          key={`${tab.id}-${subTab.id}`}
+                          className={`absolute inset-0 transition-opacity duration-500 ease-in-out ${
+                            isSubActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                          }`}
+                        >
+                          <img
+                            src={subTab.src}
+                            alt={subTab.title}
+                            className="w-full h-full object-cover object-top select-none pointer-events-none"
+                            loading="eager"
+                          />
+                        </div>
+                      );
+                    });
+                  } else {
+                    return (
+                      <div
+                        key={tab.id}
+                        className={`absolute inset-0 transition-opacity duration-500 ease-in-out ${
+                          isParentActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                        }`}
+                      >
+                        <img
+                          src={tab.src}
+                          alt={tab.title}
+                          className="w-full h-full object-cover object-top select-none pointer-events-none"
+                          loading="eager"
+                        />
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+
+              {/* Autoplay Controller and Caption */}
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 px-4 pb-2">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
+                    {TOUR_TABS[activeTab].subTabs 
+                      ? TOUR_TABS[activeTab].subTabs[activeSubTab].title 
+                      : TOUR_TABS[activeTab].title}
+                  </h3>
+                  <p className="text-muted-foreground text-sm mt-0.5 max-w-3xl">
+                    {TOUR_TABS[activeTab].subTabs 
+                      ? TOUR_TABS[activeTab].subTabs[activeSubTab].description 
+                      : TOUR_TABS[activeTab].description}
+                  </p>
+                </div>
+                
+                {/* Autoplay controls */}
+                <div className="flex-shrink-0 flex items-center gap-2">
+                  <button
+                    onClick={() => setIsPlaying(!isPlaying)}
+                    className="flex items-center justify-center p-2 rounded-lg bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
+                    title={isPlaying ? 'Auto-Wiedergabe pausieren' : 'Auto-Wiedergabe starten'}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </button>
+                  <span className="text-xs text-muted-foreground select-none font-mono">
+                    Auto-Cycle: {isPlaying ? 'An' : 'Aus'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
