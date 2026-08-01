@@ -17,7 +17,10 @@ function hashApiKey(key: string): string {
  */
 export const apiKeyAuth = async (req: Request, _res: Response, next: NextFunction) => {
   try {
-    const apiKey = req.headers['x-api-key'] as string;
+    // Accept API key from X-API-Key header (browser/direct) or Authorization: Bearer 
+    const apiKey =
+      (req.headers['x-api-key'] as string | undefined) ??
+      req.headers.authorization?.replace(/^Bearer\s+/i, '');
 
     if (!apiKey) {
       return next();
