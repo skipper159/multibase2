@@ -456,6 +456,7 @@ END $$;
 -- Extensions schema
 CREATE SCHEMA IF NOT EXISTS extensions;
 GRANT USAGE ON SCHEMA extensions TO anon, authenticated, service_role;
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements SCHEMA extensions;
 
 -- Auth schema (owned by supabase_auth_admin - used by GoTrue)
 CREATE SCHEMA IF NOT EXISTS auth;

@@ -95,9 +95,11 @@ services:
       LOGFLARE_URL: http://multibase-analytics:4000
       NEXT_PUBLIC_ENABLE_LOGS: true
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
+      SNIPPETS_MANAGEMENT_FOLDER: /home/studio/snippets
       DOCKER_SOCKET_LOCATION: /var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./volumes/snippets:/home/studio/snippets:Z
     networks:
       - multibase-shared
 

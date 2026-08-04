@@ -225,6 +225,10 @@ export class StudioManager {
       .join(this.projectsDir, tenantName, 'volumes', 'functions')
       .replace(/\\/g, '/');
 
+    const tenantSnippetsHostPath = path
+      .join(this.projectsDir, tenantName, 'volumes', 'snippets')
+      .replace(/\\/g, '/');
+    fs.mkdirSync(tenantSnippetsHostPath, { recursive: true });
     const metaContainer = `multibase-meta-${tenantName}`;
     const studioContainer = `multibase-studio-${tenantName}`;
 
@@ -260,6 +264,7 @@ export class StudioManager {
       '--restart unless-stopped',
       `-p ${studioPort}:3000`,
       '-v /var/run/docker.sock:/var/run/docker.sock:ro',
+      `-v "${tenantSnippetsHostPath}:/home/studio/snippets"`,
       `-v "${tenantFunctionsHostPath}:/home/studio/functions"`,
       `-e STUDIO_PG_META_URL=http://${metaContainer}:8080`,
       `-e STORAGE_URL=http://${tenantName}-storage:5000`,
@@ -279,6 +284,7 @@ export class StudioManager {
       '-e NEXT_PUBLIC_ENABLE_LOGS=true',
       '-e NEXT_ANALYTICS_BACKEND_PROVIDER=postgres',
       '-e EDGE_FUNCTIONS_MANAGEMENT_FOLDER=/home/studio/functions',
+      '-e SNIPPETS_MANAGEMENT_FOLDER=/home/studio/snippets',
       '-e DOCKER_SOCKET_LOCATION=/var/run/docker.sock',
       ...(openaiApiKey ? [`-e "OPENAI_API_KEY=${openaiApiKey}"`] : []),
       STUDIO_IMAGE,
