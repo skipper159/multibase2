@@ -16,10 +16,17 @@ export function createInstanceAuthRoutes() {
   router.get('/verify-instance-access', async (req: Request, res: Response): Promise<any> => {
     try {
       // 1. Extract token from cookie (parsed or raw header) or Authorization header
-      let token = req.cookies?.auth_token || req.cookies?.session;
-      if (!token && req.headers.cookie) {
-        const match = req.headers.cookie.match(/(?:^|;\s*)(?:auth_token|session)=([^;]+)/);
-        if (match) token = decodeURIComponent(match[1]);
+      let token =
+        req.cookies?.auth_token ||
+        req.cookies?.session ||
+        (req as any).signedCookies?.auth_token;
+
+      if (!token) {
+        const rawCookie = req.headers['cookie'] || req.headers.cookie;
+        if (rawCookie) {
+          const match = rawCookie.match(/(?:^|;\s*)(?:auth_token|session)=([^;]+)/);
+          if (match) token = decodeURIComponent(match[1]);
+        }
       }
       if (!token) {
         token = req.headers.authorization?.replace('Bearer ', '');
