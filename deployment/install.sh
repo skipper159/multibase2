@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.1.5" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.6" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -1887,15 +1887,15 @@ ENVEOF
 
     step "Restarting services..."
     if [ -f "$INSTALL_DIR/ecosystem.config.js" ]; then
-        sudo -u "$INSTALL_USER" pm2 startOrReload "$INSTALL_DIR/ecosystem.config.js" --update-env >> "$LOG_FILE" 2>&1
-    elif sudo -u "$INSTALL_USER" pm2 describe "$PM2_APP_NAME" &>/dev/null; then
-        sudo -u "$INSTALL_USER" pm2 restart "$PM2_APP_NAME" --update-env >> "$LOG_FILE" 2>&1
+        sudo -u "$INSTALL_USER" -H pm2 startOrReload "$INSTALL_DIR/ecosystem.config.js" --update-env >> "$LOG_FILE" 2>&1
+    elif sudo -u "$INSTALL_USER" -H pm2 describe "$PM2_APP_NAME" &>/dev/null; then
+        sudo -u "$INSTALL_USER" -H pm2 restart "$PM2_APP_NAME" --update-env >> "$LOG_FILE" 2>&1
     else
         log "pm2 process not found, creating fresh process..."
         cd "$INSTALL_DIR/dashboard/backend"
-        PORT=3001 NODE_ENV=production sudo -u "$INSTALL_USER" -E pm2 start dist/server.js --name "$PM2_APP_NAME" >> "$LOG_FILE" 2>&1
+        PORT=3001 NODE_ENV=production sudo -u "$INSTALL_USER" -H -E pm2 start dist/server.js --name "$PM2_APP_NAME" >> "$LOG_FILE" 2>&1
     fi
-    sudo -u "$INSTALL_USER" pm2 save >> "$LOG_FILE" 2>&1
+    sudo -u "$INSTALL_USER" -H pm2 save >> "$LOG_FILE" 2>&1
     step_ok "Backend restarted"
     nginx -t >> "$LOG_FILE" 2>&1
     systemctl reload nginx
@@ -1903,7 +1903,7 @@ ENVEOF
 
     step "Verifying..."
     local backend_status
-    backend_status=$(sudo -u "$INSTALL_USER" pm2 jlist 2>/dev/null | grep -o '"name":"multibase-backend"[^}]*' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "")
+    backend_status=$(sudo -u "$INSTALL_USER" -H pm2 jlist 2>/dev/null | grep -o '"name":"multibase-backend"[^}]*' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "")
     if [ "$backend_status" = "online" ] || curl -sI http://127.0.0.1:3001/api/health 2>/dev/null | grep -q "200"; then
         step_ok "Backend is running (online)"
     else
