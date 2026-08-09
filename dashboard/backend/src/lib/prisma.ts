@@ -8,9 +8,22 @@ import { PrismaClient } from '@prisma/client';
 dotenv.config();
 
 function createPrismaClient() {
-  const dbUrl = process.env.DATABASE_URL || 'file:./data/multibase.db';
-  const dbPath = path.resolve(dbUrl.replace(/^file:/, ''));
-  // Verzeichnis erstellen falls nicht vorhanden (Prisma 7 macht das nicht mehr automatisch)
+  const dbUrl = process.env.DATABASE_URL || 'file:./prisma/data/multibase.db';
+  const rawPath = dbUrl.replace(/^file:/, '');
+  const backendRoot = path.resolve(__dirname, '../..');
+  let dbPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(backendRoot, rawPath);
+
+  // If resolved path does not exist, check fallback paths for multibase.db
+  if (!fs.existsSync(dbPath)) {
+    const fallback1 = path.resolve(backendRoot, 'prisma', 'data', 'multibase.db');
+    const fallback2 = path.resolve(backendRoot, 'data', 'multibase.db');
+    if (fs.existsSync(fallback1)) {
+      dbPath = fallback1;
+    } else if (fs.existsSync(fallback2)) {
+      dbPath = fallback2;
+    }
+  }
+
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const adapter = new PrismaBetterSqlite3({ url: dbPath });
   return new PrismaClient({ adapter } as any);
