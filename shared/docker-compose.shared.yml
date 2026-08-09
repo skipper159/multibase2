@@ -336,7 +336,7 @@ services:
     image: tecnativa/docker-socket-proxy:latest
     restart: unless-stopped
     ports:
-      - '127.0.0.1:${DOCKER_PROXY_PORT:-2375}:2375'
+      - '127.0.0.1:${DOCKER_PROXY_PORT:-2378}:2375'
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:

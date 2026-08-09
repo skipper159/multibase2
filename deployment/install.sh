@@ -957,7 +957,7 @@ DATABASE_URL="file:./data/multibase.db"
 REDIS_URL=redis://:${redis_password}@localhost:6379
 
 # Docker
-DOCKER_HOST=tcp://127.0.0.1:2375
+DOCKER_HOST=tcp://127.0.0.1:2378
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Paths
@@ -1259,7 +1259,7 @@ start_docker_proxy() {
         docker run -d \
             --name "$proxy_container" \
             --restart unless-stopped \
-            -p 127.0.0.1:2375:2375 \
+            -p 127.0.0.1:2378:2375 \
             -v /var/run/docker.sock:/var/run/docker.sock:ro \
             -e CONTAINERS=1 \
             -e POST=1 \
@@ -1273,7 +1273,7 @@ start_docker_proxy() {
             -e BUILD=0 \
             -e PRIVILEGED=0 \
             tecnativa/docker-socket-proxy >> "$LOG_FILE" 2>&1
-        step_new "Docker Socket Proxy started on 127.0.0.1:2375"
+        step_new "Docker Socket Proxy started on 127.0.0.1:2378"
     fi
 }
 

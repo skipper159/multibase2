@@ -85,7 +85,7 @@ export function createSharedRoutes(
           10
         ),
         meta: parseInt(sharedEnv?.META_PORT || '8080', 10),
-        docker_proxy: parseInt(sharedEnv?.DOCKER_PROXY_PORT || '2375', 10),
+        docker_proxy: parseInt(sharedEnv?.DOCKER_PROXY_PORT || '2378', 10),
       };
 
       // Optionally append shared disk usage (cached 30 min, may be null on first call)
