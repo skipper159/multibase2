@@ -242,6 +242,11 @@ export default function UpdatesPage() {
     .map(service => service.service);
   const postgresService = dockerServices.find(service => service.service === 'multibase-db');
 
+  // Release picker – computed at component scope so header + bottom section can both use them
+  const mbReleases = status?.multibase?.availableReleases ?? [];
+  const isRunningMultibase = multibaseMutation.isPending || (liveState.isRunning && liveState.type === 'multibase');
+  const effectiveVersion = selectedVersion ?? mbReleases.find(r => r.isLatest)?.version ?? status?.multibase?.latest;
+
   const toggleService = (service: string) => {
     setSelectedServices(prev => {
       const next = new Set(prev);
@@ -394,7 +399,29 @@ export default function UpdatesPage() {
             <div className="flex items-center gap-3">
               <GitBranch className="w-5 h-5 text-brand-400 flex-shrink-0" />
               <div>
-                <h2 className="text-lg font-semibold">Multibase Dashboard</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-lg font-semibold">Multibase Dashboard</h2>
+                  {/* Version picker button – inline with title */}
+                  {mbReleases.length > 0 && (
+                    <button
+                      ref={pickerBtnRef}
+                      type="button"
+                      id="release-picker-btn"
+                      disabled={isRunningMultibase || isAnyUpdateRunning}
+                      onClick={toggleReleasePicker}
+                      className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 hover:border-white/25 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Tag className="w-3 h-3 text-muted-foreground" />
+                      <span className="font-mono">
+                        {effectiveVersion ? `v${effectiveVersion}` : 'Select version'}
+                      </span>
+                      {mbReleases.find(r => r.version === effectiveVersion)?.isLatest && (
+                        <span className="text-brand-400">Latest</span>
+                      )}
+                      <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                    </button>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground">Self-hosted dashboard application</p>
               </div>
             </div>
@@ -506,91 +533,63 @@ export default function UpdatesPage() {
 
           {/* Version picker + Update button */}
           {(() => {
-            const releases = mb?.availableReleases ?? [];
-            const isRunningMultibase = multibaseMutation.isPending || (liveState.isRunning && liveState.type === 'multibase');
-            const effectiveVersion = selectedVersion ?? releases.find(r => r.isLatest)?.version ?? mb?.latest;
             return (
               <div className="mt-4 flex flex-col gap-3">
-                {/* Release picker row */}
-                {releases.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <button
-                      ref={pickerBtnRef}
-                      type="button"
-                      id="release-picker-btn"
-                      disabled={isRunningMultibase || isAnyUpdateRunning}
-                      onClick={toggleReleasePicker}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-white/20 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                {/* Portal dropdown – rendered at document.body to escape backdrop-filter stacking context */}
+                {releasePickerOpen && pickerAnchor && createPortal(
+                  <>
+                    <div
+                      className="fixed inset-0 z-[9998]"
+                      onClick={closeReleasePicker}
+                    />
+                    <div
+                      className="fixed z-[9999] w-72 rounded-xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden"
+                      style={{ top: pickerAnchor.top, left: pickerAnchor.left }}
                     >
-                      <Tag className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-mono">
-                        {effectiveVersion ? `v${effectiveVersion}` : 'Select version'}
-                      </span>
-                      {releases.find(r => r.version === effectiveVersion)?.isLatest && (
-                        <span className="text-xs text-brand-400 bg-brand-500/15 px-1.5 py-0.5 rounded-full">Latest</span>
-                      )}
-                      {!selectedVersion && <span className="text-xs text-muted-foreground">(auto)</span>}
-                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-                    </button>
-
-                    {/* Portal dropdown – rendered at document.body to escape backdrop-filter stacking context */}
-                    {releasePickerOpen && pickerAnchor && createPortal(
-                      <>
-                        {/* Invisible backdrop to close picker */}
-                        <div
-                          className="fixed inset-0 z-[9998]"
-                          onClick={closeReleasePicker}
-                        />
-                        <div
-                          className="fixed z-[9999] w-72 rounded-xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden"
-                          style={{ top: pickerAnchor.top, left: pickerAnchor.left }}
+                      {/* Latest option */}
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedVersion(null); setChangelogOpen(false); closeReleasePicker(); }}
+                        className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
+                          !selectedVersion ? 'text-brand-400' : 'text-foreground'
+                        }`}
+                      >
+                        <span className="font-mono font-semibold">Latest (auto)</span>
+                        <span className="text-xs text-muted-foreground">always newest</span>
+                      </button>
+                      <div className="h-px bg-white/10 mx-2" />
+                      {mbReleases.map(rel => (
+                        <button
+                          key={rel.version}
+                          type="button"
+                          onClick={() => {
+                            setSelectedVersion(rel.version);
+                            if (rel.changelog) setChangelogOpen(true);
+                            closeReleasePicker();
+                          }}
+                          className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
+                            selectedVersion === rel.version ? 'text-brand-400' : 'text-foreground'
+                          }`}
                         >
-                          {/* Latest option */}
-                          <button
-                            type="button"
-                            onClick={() => { setSelectedVersion(null); setChangelogOpen(false); closeReleasePicker(); }}
-                            className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
-                              !selectedVersion ? 'text-brand-400' : 'text-foreground'
-                            }`}
-                          >
-                            <span className="font-mono font-semibold">Latest (auto)</span>
-                            <span className="text-xs text-muted-foreground">always newest</span>
-                          </button>
-                          <div className="h-px bg-white/10 mx-2" />
-                          {releases.map(rel => (
-                            <button
-                              key={rel.version}
-                              type="button"
-                              onClick={() => {
-                                setSelectedVersion(rel.version);
-                                if (rel.changelog) setChangelogOpen(true);
-                                closeReleasePicker();
-                              }}
-                              className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
-                                selectedVersion === rel.version ? 'text-brand-400' : 'text-foreground'
-                              }`}
-                            >
-                              <span className="font-mono font-semibold">v{rel.version}</span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                {rel.isLatest && (
-                                  <span className="text-xs text-brand-400 bg-brand-500/15 px-1.5 py-0.5 rounded-full">Latest</span>
-                                )}
-                                {rel.version === mb?.current && (
-                                  <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-full">Installed</span>
-                                )}
-                                {rel.publishedAt && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {new Date(rel.publishedAt).toLocaleDateString()}
-                                  </span>
-                                )}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </>,
-                      document.body
-                    )}
-                  </div>
+                          <span className="font-mono font-semibold">v{rel.version}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {rel.isLatest && (
+                              <span className="text-xs text-brand-400 bg-brand-500/15 px-1.5 py-0.5 rounded-full">Latest</span>
+                            )}
+                            {rel.version === mb?.current && (
+                              <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-full">Installed</span>
+                            )}
+                            {rel.publishedAt && (
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(rel.publishedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>,
+                  document.body
                 )}
 
                 {/* Main action button */}
