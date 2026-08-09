@@ -173,6 +173,7 @@ model User {
   templates        InstanceTemplate[]
   aiChatSessions   AiChatSession[]
   orgMemberships   OrgMember[]
+  imageUpdateGateApprovals ImageUpdateGateApproval[]
 
   @@index([email])
   @@index([role])
@@ -286,6 +287,20 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@index([success])
+}
+
+model ImageUpdateGateApproval {
+  id             String   @id @default(uuid())
+  approvedById   String
+  reason         String?
+  approvedAt     DateTime @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  approvedBy     User     @relation(fields: [approvedById], references: [id], onDelete: Cascade)
+
+  @@index([approvedById])
+  @@index([expiresAt])
+  @@index([revokedAt])
 }
 
 model ApiKey {

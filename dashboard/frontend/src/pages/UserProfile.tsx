@@ -32,8 +32,8 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 interface Session {
   id: string;
-  ipAddress: string;
-  userAgent: string;
+  ipAddress: string | null;
+  userAgent: string | null;
   createdAt: string;
   expiresAt: string;
 }
@@ -435,11 +435,13 @@ export default function UserProfile() {
   };
 
   // Parse user agent
-  const parseUserAgent = (ua: string) => {
-    if (ua.includes('Chrome')) return 'Chrome';
-    if (ua.includes('Firefox')) return 'Firefox';
-    if (ua.includes('Safari')) return 'Safari';
-    if (ua.includes('Edge')) return 'Edge';
+  const parseUserAgent = (ua: string | null | undefined) => {
+    const value = ua ?? '';
+
+    if (value.includes('Edg')) return 'Edge';
+    if (value.includes('Chrome')) return 'Chrome';
+    if (value.includes('Firefox')) return 'Firefox';
+    if (value.includes('Safari')) return 'Safari';
     return 'Unknown Browser';
   };
 
