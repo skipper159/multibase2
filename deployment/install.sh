@@ -1885,7 +1885,7 @@ run_update() {
     # Re-execute script if this is the first pass, ensuring updated install.sh runs cleanly from start
     if [ -z "${INSTALL_REEXEC:-}" ]; then
         export INSTALL_REEXEC=1
-        exec bash "$INSTALL_DIR/deployment/install.sh" "$@"
+        exec bash "$INSTALL_DIR/deployment/install.sh" --update
     fi
 
     step "Installing workspace dependencies..."
@@ -2096,7 +2096,7 @@ main() {
     case "${1:-}" in
         --update)
             preflight_checks
-            run_update
+            run_update "$@"
             exit 0
             ;;
         --uninstall)
