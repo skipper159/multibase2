@@ -11,9 +11,11 @@
  */
 
 import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import net from 'net';
 import { logger } from '../utils/logger';
 import { parseEnvFile } from '../utils/envParser';
@@ -23,6 +25,7 @@ import { loadImageMatrix } from './ImageRegistryService';
 import prisma from '../lib/prisma';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const STUDIO_IMAGE_FALLBACK = 'supabase/studio:latest';
 const TENANT_STUDIO_IDLE_MS = Math.max(
   60_000,
@@ -86,6 +89,7 @@ export class StudioManager {
       const activeLeases = await prisma.studioLease.findMany({
         where: { status: 'active' },
       });
+      const activeTenantNames = new Set<string>();
 
       for (const lease of activeLeases) {
         const lastAccess = lease.lastAccessAt.getTime();
@@ -98,8 +102,29 @@ export class StudioManager {
             data: { status: 'stopped' },
           });
         } else {
+          activeTenantNames.add(lease.tenantName);
           this.tenantLastAccess.set(lease.tenantName, lastAccess);
           this.tenantStudioPorts.set(lease.tenantName, lease.studioPort);
+        }
+      }
+
+      // Also remove containers that have no persistent lease at all. This covers
+      // crashes during activation and containers created by an older backend.
+      const { stdout } = await execFileAsync(
+        'docker',
+        ['ps', '-a', '--format={{.Names}}'],
+        { timeout: 10000 }
+      );
+      const managedContainers = stdout
+        .split(/\r?\n/)
+        .map((name) => name.trim())
+        .filter((name) => /^multibase-(studio|meta)-[a-z0-9-]+$/.test(name));
+
+      for (const containerName of managedContainers) {
+        const match = containerName.match(/^multibase-(?:studio|meta)-(.+)$/);
+        if (match && !activeTenantNames.has(match[1])) {
+          logger.info(`Removing orphaned Studio container "${containerName}" on startup...`);
+          await this.removeContainerIfExists(containerName);
         }
       }
     } catch (error) {
@@ -284,14 +309,12 @@ export class StudioManager {
       sharedEnv['SHARED_PG_META_CRYPTO_KEY'] ||
       sharedEnv['SHARED_VAULT_ENC_KEY'] ||
       sharedEnv['SHARED_SECRET_KEY_BASE'] ||
-      'kYw1qwErxTfl1mcnq4YUvwrLsQr3whBa';
+      '';
     if (pgMetaCryptoKey.length > 32) {
       pgMetaCryptoKey = pgMetaCryptoKey.slice(0, 32);
     }
     const openaiApiKey =
       tenantEnv['OPENAI_API_KEY'] || sharedEnv['OPENAI_API_KEY'] || process.env.OPENAI_API_KEY || '';
-    const studioOrg = sharedEnv['SHARED_STUDIO_ORG'] || 'Multibase';
-    const studioProject = tenantName;
     const tenantFunctionsHostPath = path
       .join(this.projectsDir, tenantName, 'volumes', 'functions')
       .replace(/\\/g, '/');
@@ -312,69 +335,215 @@ export class StudioManager {
     await this.removeContainerIfExists(metaContainer);
     await this.removeContainerIfExists(studioContainer);
 
-    const metaCmd = [
-      'docker run -d',
-      `--name ${metaContainer}`,
-      '--network multibase-shared',
-      '--restart unless-stopped',
-      '-e PG_META_PORT=8080',
-      '-e PG_META_DB_HOST=multibase-db',
-      '-e PG_META_DB_PORT=5432',
-      `-e "PG_META_DB_NAME=${projectDb}"`,
-      '-e PG_META_DB_USER=supabase_admin',
-      `-e "PG_META_DB_PASSWORD=${pgPassword}"`,
-      `-e "PG_META_DB_URL=postgresql://supabase_admin:${pgPassword}@multibase-db:5432/${projectDb}"`,
-      `-e "PG_META_CRYPTO_KEY=${pgMetaCryptoKey}"`,
-      `-e "CRYPTO_KEY=${pgMetaCryptoKey}"`,
-      metaImage,
-    ].join(' ');
+    const gatewayPort = tenantEnv['GATEWAY_PORT'] || tenantEnv['KONG_HTTP_PORT'] || '8000';
+    const publicUrl = this.resolveTenantPublicUrl(tenantEnv, gatewayPort);
+    const metaEnvironment = this.buildMetaEnvironment(projectDb, pgPassword, pgMetaCryptoKey);
+    const studioEnvironment = this.buildStudioEnvironment({
+      tenantName,
+      tenantEnv,
+      sharedEnv,
+      projectDb,
+      pgPassword,
+      pgMetaCryptoKey,
+      logflareApiKey,
+      openaiApiKey,
+      metaContainer,
+      publicUrl,
+    });
 
-    await execAsync(metaCmd, { timeout: 20000 });
+    const metaEnvFile = this.writeDockerEnvFile('meta', metaEnvironment);
+    try {
+      await execFileAsync(
+        'docker',
+        [
+          'run',
+          '-d',
+          '--name',
+          metaContainer,
+          '--network',
+          'multibase-shared',
+          '--restart',
+          'unless-stopped',
+          '--env-file',
+          metaEnvFile,
+          metaImage,
+        ],
+        { timeout: 20000 }
+      );
+    } finally {
+      this.removeDockerEnvFile(metaEnvFile);
+    }
     await this.waitForContainer(metaContainer, 15000);
 
-    const gatewayPort = tenantEnv['GATEWAY_PORT'] || tenantEnv['KONG_HTTP_PORT'] || '8000';
-    const rawPublicUrl = tenantEnv['SUPABASE_PUBLIC_URL'] || tenantEnv['API_EXTERNAL_URL'] || '';
-    const publicUrl =
-      rawPublicUrl && !rawPublicUrl.includes('.localhost')
-        ? rawPublicUrl
-        : `http://localhost:${gatewayPort}`;
-
-    const studioCmd = [
-      'docker run -d',
-      `--name ${studioContainer}`,
-      '--network multibase-shared',
-      '--restart unless-stopped',
-      `-p 127.0.0.1:${studioPort}:3000`,
-      `-v "${tenantFunctionsHostPath}:/home/studio/functions"`,
-      `-v "${tenantSnippetsHostPath}:/home/studio/snippets"`,
-      `-e STUDIO_PG_META_URL=http://${metaContainer}:8080`,
-      `-e STORAGE_URL=http://${tenantName}-storage:5000`,
-      `-e "POSTGRES_PASSWORD=${pgPassword}"`,
-      `-e POSTGRES_HOST=multibase-db`,
-      `-e POSTGRES_PORT=5432`,
-      `-e "POSTGRES_DB=${projectDb}"`,
-      `-e "DEFAULT_ORGANIZATION_NAME=${studioOrg}"`,
-      `-e "DEFAULT_PROJECT_NAME=${studioProject}"`,
-      `-e SUPABASE_URL=http://multibase-nginx-gateway:8000`,
-      `-e SUPABASE_PUBLIC_URL=${publicUrl}`,
-      `-e "SUPABASE_ANON_KEY=${tenantEnv['ANON_KEY'] || ''}"`,
-      `-e "SUPABASE_SERVICE_KEY=${tenantEnv['SERVICE_ROLE_KEY'] || ''}"`,
-      `-e "PG_META_CRYPTO_KEY=${pgMetaCryptoKey}"`,
-      `-e "AUTH_JWT_SECRET=${tenantEnv['JWT_SECRET'] || ''}"`,
-      `-e "LOGFLARE_API_KEY=${logflareApiKey}"`,
-      '-e LOGFLARE_URL=http://multibase-analytics:4000',
-      '-e NEXT_PUBLIC_ENABLE_LOGS=true',
-      '-e NEXT_ANALYTICS_BACKEND_PROVIDER=postgres',
-      '-e EDGE_FUNCTIONS_MANAGEMENT_FOLDER=/home/studio/functions',
-      '-e SNIPPETS_MANAGEMENT_FOLDER=/home/studio/snippets',
-      ...(openaiApiKey ? [`-e "OPENAI_API_KEY=${openaiApiKey}"`] : []),
-      studioImage,
-    ].join(' ');
-
-    await execAsync(studioCmd, { timeout: 25000 });
-    await this.waitForContainer(studioContainer, 20000);
+    const studioEnvFile = this.writeDockerEnvFile('studio', studioEnvironment);
+    try {
+      await execFileAsync(
+        'docker',
+        [
+          'run',
+          '-d',
+          '--name',
+          studioContainer,
+          '--network',
+          'multibase-shared',
+          '--restart',
+          'unless-stopped',
+          '--health-cmd',
+          "node -e \"fetch('http://127.0.0.1:3000/').then(() => process.exit(0)).catch(() => process.exit(1))\"",
+          '--health-interval',
+          '10s',
+          '--health-timeout',
+          '5s',
+          '--health-retries',
+          '6',
+          '--health-start-period',
+          '30s',
+          '-p',
+          `127.0.0.1:${studioPort}:3000`,
+          '-v',
+          `${tenantFunctionsHostPath}:/home/studio/functions`,
+          '-v',
+          `${tenantSnippetsHostPath}:/home/studio/snippets`,
+          '--env-file',
+          studioEnvFile,
+          studioImage,
+        ],
+        { timeout: 25000 }
+      );
+    } finally {
+      this.removeDockerEnvFile(studioEnvFile);
+    }
+    await this.waitForContainerHealthy(studioContainer, 60000);
 
     return studioPort;
+  }
+
+  private resolveTenantPublicUrl(tenantEnv: Record<string, string>, gatewayPort: string): string {
+    const rawPublicUrl = tenantEnv['SUPABASE_PUBLIC_URL'] || tenantEnv['API_EXTERNAL_URL'] || '';
+    return rawPublicUrl && !rawPublicUrl.includes('.localhost')
+      ? rawPublicUrl
+      : `http://localhost:${gatewayPort}`;
+  }
+
+  private buildMetaEnvironment(
+    projectDb: string,
+    pgPassword: string,
+    pgMetaCryptoKey: string
+  ): Record<string, string> {
+    return {
+      PG_META_PORT: '8080',
+      PG_META_DB_HOST: 'multibase-db',
+      PG_META_DB_PORT: '5432',
+      PG_META_DB_NAME: projectDb,
+      PG_META_DB_USER: 'supabase_admin',
+      PG_META_DB_PASSWORD: pgPassword,
+      PG_META_DB_URL: `postgresql://supabase_admin:${pgPassword}@multibase-db:5432/${projectDb}`,
+      PG_META_CRYPTO_KEY: pgMetaCryptoKey,
+      CRYPTO_KEY: pgMetaCryptoKey,
+    };
+  }
+
+  private buildStudioEnvironment(options: {
+    tenantName: string;
+    tenantEnv: Record<string, string>;
+    sharedEnv: Record<string, string>;
+    projectDb: string;
+    pgPassword: string;
+    pgMetaCryptoKey: string;
+    logflareApiKey: string;
+    openaiApiKey: string;
+    metaContainer: string;
+    publicUrl: string;
+  }): Record<string, string> {
+    const {
+      tenantName,
+      tenantEnv,
+      sharedEnv,
+      projectDb,
+      pgPassword,
+      pgMetaCryptoKey,
+      logflareApiKey,
+      openaiApiKey,
+      metaContainer,
+      publicUrl,
+    } = options;
+    const tenantJwtSecret = tenantEnv['JWT_SECRET'] || '';
+    const anonKey = tenantEnv['ANON_KEY'] || '';
+    const serviceRoleKey = tenantEnv['SERVICE_ROLE_KEY'] || '';
+
+    const environment: Record<string, string> = {
+      STUDIO_PG_META_URL: `http://${metaContainer}:8080`,
+      STORAGE_URL: `http://${tenantName}-storage:5000`,
+      POSTGRES_PASSWORD: pgPassword,
+      POSTGRES_HOST: 'multibase-db',
+      POSTGRES_PORT: '5432',
+      POSTGRES_DB: projectDb,
+      DEFAULT_ORGANIZATION_NAME: sharedEnv['SHARED_STUDIO_ORG'] || 'Multibase',
+      DEFAULT_PROJECT_NAME: tenantName,
+      SUPABASE_URL: 'http://multibase-nginx-gateway:8000',
+      SUPABASE_PUBLIC_URL: publicUrl,
+      SUPABASE_ANON_KEY: anonKey,
+      SUPABASE_SERVICE_KEY: serviceRoleKey,
+      PG_META_CRYPTO_KEY: pgMetaCryptoKey,
+      // This must match the tenant Auth/REST JWT, not the shared infrastructure JWT.
+      AUTH_JWT_SECRET: tenantJwtSecret,
+      LOGFLARE_API_KEY: logflareApiKey,
+      LOGFLARE_URL: 'http://multibase-analytics:4000',
+      NEXT_PUBLIC_ENABLE_LOGS: 'true',
+      NEXT_ANALYTICS_BACKEND_PROVIDER: 'postgres',
+      EDGE_FUNCTIONS_MANAGEMENT_FOLDER: '/home/studio/functions',
+      SNIPPETS_MANAGEMENT_FOLDER: '/home/studio/snippets',
+    };
+
+    if (openaiApiKey) {
+      environment.OPENAI_API_KEY = openaiApiKey;
+    }
+
+    this.validateStudioEnvironment(environment, tenantName);
+    return environment;
+  }
+
+  private validateStudioEnvironment(environment: Record<string, string>, tenantName: string): void {
+    const required = [
+      'STUDIO_PG_META_URL',
+      'STORAGE_URL',
+      'POSTGRES_PASSWORD',
+      'POSTGRES_DB',
+      'SUPABASE_ANON_KEY',
+      'SUPABASE_SERVICE_KEY',
+      'PG_META_CRYPTO_KEY',
+      'AUTH_JWT_SECRET',
+    ];
+    const missing = required.filter((key) => !environment[key]?.trim());
+    if (missing.length > 0) {
+      throw new Error(
+        `Cannot start tenant Studio "${tenantName}": missing required configuration: ${missing.join(', ')}`
+      );
+    }
+  }
+
+  private writeDockerEnvFile(kind: string, environment: Record<string, string>): string {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `multibase-${kind}-`));
+    const envFile = path.join(directory, 'container.env');
+    const content = Object.entries(environment)
+      .map(([key, value]) => {
+        if (/\r|\n/.test(value)) {
+          throw new Error(`Invalid newline in Docker environment value: ${key}`);
+        }
+        return `${key}=${value}`;
+      })
+      .join('\n');
+    fs.writeFileSync(envFile, `${content}\n`, { encoding: 'utf8', mode: 0o600 });
+    return envFile;
+  }
+
+  private removeDockerEnvFile(envFile: string): void {
+    try {
+      fs.unlinkSync(envFile);
+      fs.rmdirSync(path.dirname(envFile));
+    } catch {
+      // Best effort cleanup; Docker has already copied the values into the container.
+    }
   }
 
   /**
@@ -393,7 +562,7 @@ export class StudioManager {
     );
     if (fs.existsSync(sysNginxConfig)) {
       try {
-        let config = fs.readFileSync(sysNginxConfig, 'utf8');
+        const config = fs.readFileSync(sysNginxConfig, 'utf8');
         // Replace the studio proxy_pass port: find the first location / block that
         // contains auth_request (= studio block), then replace its proxy_pass port.
         // Supports configs with or without the "# Main location with authentication" comment.
@@ -418,8 +587,9 @@ export class StudioManager {
         // Reload system nginx (multibase has sudo NOPASSWD for this)
         await execAsync('sudo nginx -s reload', { timeout: 10000 });
         logger.info(`System nginx reloaded for tenant "${tenantName}"`);
-      } catch (err: any) {
-        logger.warn(`Failed to update system nginx for "${tenantName}": ${err.message}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn(`Failed to update system nginx for "${tenantName}": ${message}`);
       }
     }
 
@@ -428,8 +598,9 @@ export class StudioManager {
       await generateAndWriteTenantConfig(tenantName, this.projectsDir, this.sharedDir);
       await reloadNginxGateway();
       logger.info(`Docker nginx-gateway config updated and reloaded for tenant "${tenantName}"`);
-    } catch (error: any) {
-      logger.warn(`Failed to update Docker nginx-gateway for tenant "${tenantName}": ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`Failed to update Docker nginx-gateway for tenant "${tenantName}": ${message}`);
       // Non-fatal: Studio can still work, just the gateway routes might be outdated
     }
   }
@@ -507,7 +678,9 @@ export class StudioManager {
       await this.waitForContainer('multibase-meta', 15000);
       logger.info(`pg-meta switched to database: ${projectDb}`);
     } catch (error) {
-      throw new Error(`Failed to switch pg-meta to ${projectDb}: ${(error as Error).message}`);
+      throw new Error(`Failed to switch pg-meta to ${projectDb}: ${(error as Error).message}`, {
+        cause: error,
+      });
     }
   }
 
@@ -534,7 +707,9 @@ export class StudioManager {
         }
       }
     } catch (error) {
-      throw new Error(`Tenant "${tenantName}" is not running: ${(error as Error).message}`);
+      throw new Error(`Tenant "${tenantName}" is not running: ${(error as Error).message}`, {
+        cause: error,
+      });
     }
   }
 
@@ -564,6 +739,52 @@ export class StudioManager {
     }
 
     throw new Error(`Container ${containerName} did not become ready within ${timeoutMs}ms`);
+  }
+
+  /**
+   * Wait for a container with a Docker healthcheck to become healthy.
+   * This deliberately checks readiness separately from the process state so
+   * a running Next.js process is not mistaken for a ready Studio application.
+   */
+  private async waitForContainerHealthy(containerName: string, timeoutMs: number): Promise<void> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const { stdout: statusOutput } = await execFileAsync(
+          'docker',
+          ['inspect', '--format={{.State.Status}}', containerName],
+          { timeout: 5000 }
+        );
+        const status = statusOutput.trim();
+        if (status !== 'running') {
+          throw new Error(`container status is ${status || 'unknown'}`);
+        }
+
+        const { stdout: healthOutput } = await execFileAsync(
+          'docker',
+          ['inspect', '--format={{if .State.Health}}{{.State.Health.Status}}{{end}}', containerName],
+          { timeout: 5000 }
+        );
+        const health = healthOutput.trim();
+        if (health === 'healthy') {
+          return;
+        }
+        if (health === 'unhealthy') {
+          throw new Error(`healthcheck failed for ${containerName}`);
+        }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('healthcheck failed')) {
+          throw error;
+        }
+        // The container may still be starting, so continue polling until the
+        // overall timeout is reached.
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    throw new Error(`Container ${containerName} did not become healthy within ${timeoutMs}ms`);
   }
 
   /**
