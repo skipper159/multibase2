@@ -1883,7 +1883,7 @@ run_update() {
     step_ok "Repository updated"
 
     # Re-execute script if this is the first pass, ensuring updated install.sh runs cleanly from start
-    if [ -z "$INSTALL_REEXEC" ]; then
+    if [ -z "${INSTALL_REEXEC:-}" ]; then
         export INSTALL_REEXEC=1
         exec bash "$0" "$@"
     fi
