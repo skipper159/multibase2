@@ -1878,14 +1878,14 @@ run_update() {
 
     step "Pulling latest changes..."
     cd "$INSTALL_DIR"
-    sudo -u "$INSTALL_USER" git fetch origin main >> "$LOG_FILE" 2>&1
-    sudo -u "$INSTALL_USER" git reset --hard origin/main >> "$LOG_FILE" 2>&1
+    sudo -u "$INSTALL_USER" git fetch origin "$REPO_BRANCH" >> "$LOG_FILE" 2>&1
+    sudo -u "$INSTALL_USER" git reset --hard origin/"$REPO_BRANCH" >> "$LOG_FILE" 2>&1
     step_ok "Repository updated"
 
     # Re-execute script if this is the first pass, ensuring updated install.sh runs cleanly from start
     if [ -z "${INSTALL_REEXEC:-}" ]; then
         export INSTALL_REEXEC=1
-        exec bash "$0" "$@"
+        exec bash "$INSTALL_DIR/deployment/install.sh" "$@"
     fi
 
     step "Installing workspace dependencies..."
