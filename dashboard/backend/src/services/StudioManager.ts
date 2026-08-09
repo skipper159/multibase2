@@ -305,14 +305,11 @@ export class StudioManager {
       sharedEnv['SHARED_POSTGRES_PASSWORD'] || tenantEnv['POSTGRES_PASSWORD'] || '';
     const logflareApiKey =
       sharedEnv['SHARED_LOGFLARE_API_KEY'] || sharedEnv['LOGFLARE_API_KEY'] || '';
-    let pgMetaCryptoKey =
+    const pgMetaCryptoKey =
       sharedEnv['SHARED_PG_META_CRYPTO_KEY'] ||
-      sharedEnv['SHARED_VAULT_ENC_KEY'] ||
       sharedEnv['SHARED_SECRET_KEY_BASE'] ||
+      sharedEnv['SHARED_VAULT_ENC_KEY'] ||
       '';
-    if (pgMetaCryptoKey.length > 32) {
-      pgMetaCryptoKey = pgMetaCryptoKey.slice(0, 32);
-    }
     const openaiApiKey =
       tenantEnv['OPENAI_API_KEY'] || sharedEnv['OPENAI_API_KEY'] || process.env.OPENAI_API_KEY || '';
     const tenantFunctionsHostPath = path
@@ -427,7 +424,6 @@ export class StudioManager {
       PG_META_DB_NAME: projectDb,
       PG_META_DB_USER: 'supabase_admin',
       PG_META_DB_PASSWORD: pgPassword,
-      PG_META_DB_URL: `postgresql://supabase_admin:${pgPassword}@multibase-db:5432/${projectDb}`,
       PG_META_CRYPTO_KEY: pgMetaCryptoKey,
       CRYPTO_KEY: pgMetaCryptoKey,
     };
