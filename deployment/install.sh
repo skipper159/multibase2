@@ -1155,7 +1155,8 @@ setup_shared_infra() {
     echo ""
 
     # 4. Start shared stack and show per-container status
-    echo -e "        ${DIM}[2/2] Starting containers...${NC}"
+    # Future option: Force Docker to re-apply updated port bindings (e.g. 127.0.0.1) immediately on update:
+    # docker compose --file "$compose_file" --env-file "$env_file" --project-name multibase-shared up -d --force-recreate
     sudo -u "$INSTALL_USER" "$python" "${INSTALL_DIR}/setup_shared.py" start >> "$LOG_FILE" 2>&1
     # Print status of each container
     docker compose --file "$compose_file" --env-file "$env_file" \

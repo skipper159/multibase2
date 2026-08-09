@@ -355,7 +355,7 @@ export class StudioManager {
       `-e "POSTGRES_DB=${projectDb}"`,
       `-e "DEFAULT_ORGANIZATION_NAME=${studioOrg}"`,
       `-e "DEFAULT_PROJECT_NAME=${studioProject}"`,
-      `-e SUPABASE_URL=http://multibase-nginx-gateway:${gatewayPort}`,
+      `-e SUPABASE_URL=http://multibase-nginx-gateway:8000`,
       `-e SUPABASE_PUBLIC_URL=${publicUrl}`,
       `-e "SUPABASE_ANON_KEY=${tenantEnv['ANON_KEY'] || ''}"`,
       `-e "SUPABASE_SERVICE_KEY=${tenantEnv['SERVICE_ROLE_KEY'] || ''}"`,
