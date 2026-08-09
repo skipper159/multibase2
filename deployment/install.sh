@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.1.3" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.4" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -899,9 +899,6 @@ build_frontend() {
 
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
     step_ok "Frontend built"
-
-    # Remove node_modules after build to save disk space
-    sudo -u "$INSTALL_USER" rm -rf node_modules >> "$LOG_FILE" 2>&1
 }
 
 # =============================================================================
@@ -1886,7 +1883,6 @@ ENVEOF
     fi
     sudo -u "$INSTALL_USER" npm ci >> "$LOG_FILE" 2>&1
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
-    sudo -u "$INSTALL_USER" rm -rf node_modules >> "$LOG_FILE" 2>&1
     step_ok "Frontend built"
 
     step "Restarting services..."
