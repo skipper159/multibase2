@@ -53,7 +53,7 @@ export const useCheckUpdates = () => {
 export const useUpdateMultibase = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: updatesApi.updateMultibase,
+    mutationFn: (targetVersion?: string) => updatesApi.updateMultibase(targetVersion),
     onSuccess: () => {
       // Status will be re-fetched once server comes back up after PM2 restart
       setTimeout(() => queryClient.invalidateQueries({ queryKey: updateKeys.all }), 15_000);

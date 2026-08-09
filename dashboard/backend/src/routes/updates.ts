@@ -83,16 +83,24 @@ export function createUpdateRoutes(updateService: UpdateService, io: SocketIOSer
   router.post(
     '/multibase',
     auditLog('MULTIBASE_UPDATE', {}),
-    (_req: Request, res: Response): void => {
+    (req: Request, res: Response): void => {
       if (updateService.isInProgress) {
         res.status(423).json({ error: 'An update is already in progress' });
         return;
       }
 
-      // Respond before the update starts (the process will restart itself via PM2)
-      res.status(202).json({ success: true, message: 'Multibase update started' });
+      const { targetVersion } = req.body as { targetVersion?: string };
 
-      updateService.performMultibaseUpdate().catch((err: Error) => {
+      // Respond before the update starts (the process will restart itself via PM2)
+      res.status(202).json({
+        success: true,
+        message: targetVersion
+          ? `Switching Multibase to v${targetVersion}`
+          : 'Multibase update started',
+        targetVersion: targetVersion ?? null,
+      });
+
+      updateService.performMultibaseUpdate(targetVersion).catch((err: Error) => {
         logger.error('Multibase update failed:', err);
       });
     }

@@ -1335,11 +1335,20 @@ export const instanceExtensionsApi = {
 // Updates API
 // =====================================================
 
+export interface GitHubReleaseItem {
+  version: string;
+  name: string;
+  publishedAt: string | null;
+  changelog: string | null;
+  isLatest: boolean;
+}
+
 export interface UpdateVersionInfo {
   current: string;
   latest: string | null;
   hasUpdate: boolean;
   changelog: string | null;
+  availableReleases?: GitHubReleaseItem[];
   checkedAt: string | null;
 }
 
@@ -1430,8 +1439,11 @@ export const updatesApi = {
 
   check: (): Promise<UpdateStatus> => fetchApi('/api/updates/check', { method: 'POST' }),
 
-  updateMultibase: (): Promise<{ success: boolean; message: string }> =>
-    fetchApi('/api/updates/multibase', { method: 'POST' }),
+  updateMultibase: (targetVersion?: string): Promise<{ success: boolean; message: string; targetVersion: string | null }> =>
+    fetchApi('/api/updates/multibase', {
+      method: 'POST',
+      body: JSON.stringify(targetVersion ? { targetVersion } : {}),
+    }),
 
   updateDocker: (
     services?: string[],

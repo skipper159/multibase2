@@ -40,11 +40,20 @@ import { AUDIT_ACTIONS } from '../constants/auditActions';
 
 const execFileAsync = promisify(execFile);
 
+export interface GitHubReleaseItem {
+  version: string;
+  name: string;
+  publishedAt: string | null;
+  changelog: string | null;
+  isLatest: boolean;
+}
+
 export interface VersionInfo {
   current: string;
   latest: string | null;
   hasUpdate: boolean;
   changelog: string | null;
+  availableReleases?: GitHubReleaseItem[];
   checkedAt: Date | null;
 }
 
@@ -242,6 +251,44 @@ export class UpdateService extends EventEmitter {
     }
 
     return { version: null, changelog: null };
+  }
+
+  async fetchRecentGitHubReleases(limit = 10): Promise<GitHubReleaseItem[]> {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/skipper159/multibase2/releases?per_page=${limit}`,
+        {
+          headers: {
+            'User-Agent': 'multibase-dashboard/3.0.0',
+            Accept: 'application/vnd.github+json',
+          },
+          signal: AbortSignal.timeout(8000),
+        }
+      );
+      if (response.ok) {
+        const items = (await response.json()) as Array<{
+          tag_name?: string;
+          name?: string;
+          published_at?: string;
+          body?: string;
+        }>;
+        if (Array.isArray(items)) {
+          return items
+            .slice(0, limit)
+            .map((item, index) => ({
+              version: item.tag_name?.replace(/^v/, '') || item.tag_name || '',
+              name: item.name || item.tag_name || '',
+              publishedAt: item.published_at || null,
+              changelog: item.body || null,
+              isLatest: index === 0,
+            }))
+            .filter((r) => !!r.version);
+        }
+      }
+    } catch {
+      // fall through
+    }
+    return [];
   }
 
   private compareVersions(a: string, b: string): number {
@@ -599,12 +646,14 @@ export class UpdateService extends EventEmitter {
 
     const current = this.getCurrentVersion();
     const { version: latest, changelog } = await this.fetchLatestGitHubRelease();
+    const availableReleases = await this.fetchRecentGitHubReleases(10);
 
     const multibase: VersionInfo = {
       current,
       latest,
       hasUpdate: latest !== null && this.compareVersions(latest, current) > 0,
       changelog,
+      availableReleases,
       checkedAt: new Date(),
     };
 
@@ -653,7 +702,7 @@ export class UpdateService extends EventEmitter {
   // Multibase Update
   // ──────────────────────────────────────────────
 
-  async performMultibaseUpdate(): Promise<void> {
+  async performMultibaseUpdate(targetVersion?: string): Promise<void> {
     if (this._isInProgress) throw new Error('An update is already in progress');
     this._isInProgress = true;
 
@@ -667,22 +716,31 @@ export class UpdateService extends EventEmitter {
     // split + VPS1 vars missing → skip frontend entirely (CI handles it)
     // local                   → build frontend here (served from same server)
     const includeFrontend = this.frontendServe === 'local' || canDeploySplit;
+    const gitLabel = targetVersion ? `install v${targetVersion}` : 'git pull';
     const steps =
       this.frontendServe === 'local'
-        ? ['git pull', 'backend install', 'frontend build', 'restart']
+        ? [gitLabel, 'backend install', 'frontend build', 'restart']
         : canDeploySplit
-          ? ['git pull', 'backend install', 'frontend build', 'frontend deploy', 'restart']
-          : ['git pull', 'backend install', 'restart'];
-    this.emit('update:start', { type: 'multibase', steps });
+          ? [gitLabel, 'backend install', 'frontend build', 'frontend deploy', 'restart']
+          : [gitLabel, 'backend install', 'restart'];
+    this.emit('update:start', { type: 'multibase', steps, targetVersion: targetVersion ?? null });
 
     const gitBranch = process.env.GIT_UPDATE_BRANCH ?? 'main';
 
     try {
-      // Step 0: git fetch + reset (avoids diverged-branch errors from git pull)
-      this.emitStep('git pull', 0, steps.length);
-      await this.runCommand('git', ['fetch', 'origin', gitBranch], this.rootDir);
-      await this.runCommand('git', ['reset', '--hard', `origin/${gitBranch}`], this.rootDir);
-      this.emitStepDone('git pull', 0);
+      // Step 0: git fetch + reset to either a specific tag or the branch tip
+      this.emitStep(gitLabel, 0, steps.length);
+      if (targetVersion) {
+        // Normalise: accept both "3.1.9" and "v3.1.9"
+        const tag = targetVersion.startsWith('v') ? targetVersion : `v${targetVersion}`;
+        this.emit('update:log', { line: `Switching to release ${tag}...` });
+        await this.runCommand('git', ['fetch', '--tags', 'origin'], this.rootDir);
+        await this.runCommand('git', ['reset', '--hard', tag], this.rootDir);
+      } else {
+        await this.runCommand('git', ['fetch', 'origin', gitBranch], this.rootDir);
+        await this.runCommand('git', ['reset', '--hard', `origin/${gitBranch}`], this.rootDir);
+      }
+      this.emitStepDone(gitLabel, 0);
 
       // Step 1: workspace npm install
       // --include=dev: tsc braucht @types/* zum Bauen (wird nach dem Build entfernt)
