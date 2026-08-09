@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   useUpdateStatus,
   useCheckUpdates,
@@ -196,16 +196,39 @@ export default function UpdatesPage() {
   const [changelogOpen, setChangelogOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<string | null>(null); // null = latest
   const [releasePickerOpen, setReleasePickerOpen] = useState(false);
+  const [pickerAnchor, setPickerAnchor] = useState<{ top: number; left: number; width: number } | null>(null);
+  const pickerBtnRef = useRef<HTMLButtonElement>(null);
   const [confirmation, setConfirmation] = useState<{
     type: 'multibase' | 'docker' | 'postgres';
     title: string;
     description: string;
     targets: string[];
-    targetVersion?: string; // for multibase version targeting
+    targetVersion?: string;
     warning?: string;
     requiresText?: string;
   } | null>(null);
   const [progressOpen, setProgressOpen] = useState(false);
+
+  const openReleasePicker = useCallback(() => {
+    if (pickerBtnRef.current) {
+      const rect = pickerBtnRef.current.getBoundingClientRect();
+      setPickerAnchor({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    }
+    setReleasePickerOpen(true);
+  }, []);
+
+  const closeReleasePicker = useCallback(() => {
+    setReleasePickerOpen(false);
+    setPickerAnchor(null);
+  }, []);
+
+  const toggleReleasePicker = useCallback(() => {
+    if (releasePickerOpen) {
+      closeReleasePicker();
+    } else {
+      openReleasePicker();
+    }
+  }, [releasePickerOpen, openReleasePicker, closeReleasePicker]);
 
   const isAnyUpdateRunning =
     liveState.isRunning || multibaseMutation.isPending || dockerMutation.isPending || postgresMutation.isPending;
@@ -468,38 +491,47 @@ export default function UpdatesPage() {
           {(() => {
             const releases = mb?.availableReleases ?? [];
             const isRunningMultibase = multibaseMutation.isPending || (liveState.isRunning && liveState.type === 'multibase');
-            // effective selected version label
             const effectiveVersion = selectedVersion ?? releases.find(r => r.isLatest)?.version ?? mb?.latest;
             return (
               <div className="mt-4 flex flex-col gap-3">
                 {/* Release picker row */}
                 {releases.length > 0 && (
                   <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <button
-                        type="button"
-                        id="release-picker-btn"
-                        disabled={isRunningMultibase || isAnyUpdateRunning}
-                        onClick={() => setReleasePickerOpen(v => !v)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-white/20 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Tag className="w-4 h-4 text-muted-foreground" />
-                        <span className="font-mono">
-                          {effectiveVersion ? `v${effectiveVersion}` : 'Select version'}
-                        </span>
-                        {releases.find(r => r.version === effectiveVersion)?.isLatest && (
-                          <span className="text-xs text-brand-400 bg-brand-500/15 px-1.5 py-0.5 rounded-full">Latest</span>
-                        )}
-                        {!selectedVersion && <span className="text-xs text-muted-foreground">(auto)</span>}
-                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
-                      </button>
+                    <button
+                      ref={pickerBtnRef}
+                      type="button"
+                      id="release-picker-btn"
+                      disabled={isRunningMultibase || isAnyUpdateRunning}
+                      onClick={toggleReleasePicker}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10 hover:border-white/20 text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Tag className="w-4 h-4 text-muted-foreground" />
+                      <span className="font-mono">
+                        {effectiveVersion ? `v${effectiveVersion}` : 'Select version'}
+                      </span>
+                      {releases.find(r => r.version === effectiveVersion)?.isLatest && (
+                        <span className="text-xs text-brand-400 bg-brand-500/15 px-1.5 py-0.5 rounded-full">Latest</span>
+                      )}
+                      {!selectedVersion && <span className="text-xs text-muted-foreground">(auto)</span>}
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
 
-                      {releasePickerOpen && (
-                        <div className="absolute left-0 top-full mt-1 z-30 w-72 rounded-xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden">
+                    {/* Fixed-position dropdown – escapes backdrop-blur stacking context */}
+                    {releasePickerOpen && pickerAnchor && (
+                      <>
+                        {/* Invisible backdrop to close picker */}
+                        <div
+                          className="fixed inset-0 z-[9998]"
+                          onClick={closeReleasePicker}
+                        />
+                        <div
+                          className="fixed z-[9999] w-72 rounded-xl border border-white/10 bg-[#111] shadow-2xl overflow-hidden"
+                          style={{ top: pickerAnchor.top, left: pickerAnchor.left }}
+                        >
                           {/* Latest option */}
                           <button
                             type="button"
-                            onClick={() => { setSelectedVersion(null); setReleasePickerOpen(false); }}
+                            onClick={() => { setSelectedVersion(null); closeReleasePicker(); }}
                             className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
                               !selectedVersion ? 'text-brand-400' : 'text-foreground'
                             }`}
@@ -512,7 +544,7 @@ export default function UpdatesPage() {
                             <button
                               key={rel.version}
                               type="button"
-                              onClick={() => { setSelectedVersion(rel.version); setReleasePickerOpen(false); }}
+                              onClick={() => { setSelectedVersion(rel.version); closeReleasePicker(); }}
                               className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
                                 selectedVersion === rel.version ? 'text-brand-400' : 'text-foreground'
                               }`}
@@ -534,15 +566,7 @@ export default function UpdatesPage() {
                             </button>
                           ))}
                         </div>
-                      )}
-                    </div>
-
-                    {/* Dismiss overlay when picker is open */}
-                    {releasePickerOpen && (
-                      <div
-                        className="fixed inset-0 z-20"
-                        onClick={() => setReleasePickerOpen(false)}
-                      />
+                      </>
                     )}
                   </div>
                 )}
@@ -552,7 +576,6 @@ export default function UpdatesPage() {
                   <button
                     onClick={() => handleMultibaseUpdate()}
                     disabled={isAnyUpdateRunning || (
-                      // if nothing selected (= latest) only enable when hasUpdate; if a version is selected always enable
                       !selectedVersion && !mb?.hasUpdate
                     )}
                     className='btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
