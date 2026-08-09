@@ -388,16 +388,6 @@ export class StudioManager {
           'multibase-shared',
           '--restart',
           'unless-stopped',
-          '--health-cmd',
-          "node -e \"fetch('http://127.0.0.1:3000/').then(() => process.exit(0)).catch(() => process.exit(1))\"",
-          '--health-interval',
-          '10s',
-          '--health-timeout',
-          '5s',
-          '--health-retries',
-          '6',
-          '--health-start-period',
-          '30s',
           '-p',
           `127.0.0.1:${studioPort}:3000`,
           '-v',
@@ -413,7 +403,7 @@ export class StudioManager {
     } finally {
       this.removeDockerEnvFile(studioEnvFile);
     }
-    await this.waitForContainerHealthy(studioContainer, 60000);
+    await this.waitForContainer(studioContainer, 20000);
 
     return studioPort;
   }
