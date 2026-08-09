@@ -998,8 +998,9 @@ ALERT_CHECK_INTERVAL=60000
 SESSION_SECRET=${session_secret}
 
 # Update Security Gate
-# Image updates stay blocked until an operator explicitly approves the
-# reviewed image matrix in the environment.
+# Image updates are blocked by default. Administrators can approve a
+# temporary maintenance window from the Web UI (requires admin + 2FA).
+# 'approved' remains a legacy emergency override without an expiry.
 IMAGE_UPDATE_SECURITY_GATE=${IMAGE_UPDATE_SECURITY_GATE:-blocked}
 
 # Initial admin credentials (used by backend on first start if no admin exists)

@@ -73,6 +73,70 @@ export function createUpdateRoutes(updateService: UpdateService, io: SocketIOSer
   });
 
   /**
+   * GET /api/updates/security-gate
+   * Returns the current temporary image-update approval.
+   */
+  router.get('/security-gate', async (_req: Request, res: Response) => {
+    try {
+      return res.json(await updateService.getSecurityGateStatus());
+    } catch (error) {
+      logger.error('Error fetching image update security gate:', error);
+      return res.status(500).json({ error: 'Failed to fetch image update security gate' });
+    }
+  });
+
+  /**
+   * POST /api/updates/security-gate/approve
+   * Approves image updates for a short, bounded maintenance window.
+   * Admin sessions must have completed 2FA.
+   */
+  router.post(
+    '/security-gate/approve',
+    auditLog('IMAGE_UPDATE_GATE_APPROVED', { includeBody: true }),
+    async (req: Request, res: Response) => {
+      try {
+        if (!req.user?.twoFactorEnabled) {
+          return res.status(403).json({
+            error: 'Two-factor authentication must be enabled before approving image updates.',
+          });
+        }
+
+        const durationMinutes = Number(req.body?.durationMinutes ?? 60);
+        if (!Number.isFinite(durationMinutes)) {
+          return res.status(400).json({ error: 'durationMinutes must be a number' });
+        }
+
+        const approval = await updateService.approveSecurityGate({
+          userId: req.user.id,
+          durationMinutes,
+          reason: typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 500) : undefined,
+        });
+        return res.json(approval);
+      } catch (error) {
+        logger.error('Error approving image update security gate:', error);
+        return res.status(500).json({ error: 'Failed to approve image update security gate' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/updates/security-gate/revoke
+   * Revokes all active web approvals immediately.
+   */
+  router.post(
+    '/security-gate/revoke',
+    auditLog('IMAGE_UPDATE_GATE_REVOKED'),
+    async (_req: Request, res: Response) => {
+      try {
+        return res.json(await updateService.revokeSecurityGate());
+      } catch (error) {
+        logger.error('Error revoking image update security gate:', error);
+        return res.status(500).json({ error: 'Failed to revoke image update security gate' });
+      }
+    }
+  );
+
+  /**
    * POST /api/updates/multibase
    * Starts a Multibase self-update:
    *   git pull → npm ci (backend) → npm ci + build (frontend) → pm2 restart

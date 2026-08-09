@@ -1410,7 +1410,20 @@ export interface TenantImageUpdateStatus {
   securityGate: {
     status: 'blocked' | 'ready';
     reason: string | null;
+    source: 'none' | 'environment' | 'web';
+    approvedAt: string | null;
+    expiresAt: string | null;
+    approvedBy: { id: string; username: string; email: string } | null;
   };
+}
+
+export interface SecurityGateStatus {
+  status: 'blocked' | 'ready';
+  reason: string | null;
+  source: 'none' | 'environment' | 'web';
+  approvedAt: string | null;
+  expiresAt: string | null;
+  approvedBy: { id: string; username: string; email: string } | null;
 }
 
 export interface UpdateStatus {
@@ -1431,6 +1444,10 @@ export interface UpdateStatus {
   securityGate: {
     status: 'blocked' | 'ready';
     reason: string | null;
+    source: 'none' | 'environment' | 'web';
+    approvedAt: string | null;
+    expiresAt: string | null;
+    approvedBy: { id: string; username: string; email: string } | null;
   };
 }
 
@@ -1438,6 +1455,21 @@ export const updatesApi = {
   getStatus: (): Promise<UpdateStatus> => fetchApi('/api/updates/status'),
 
   check: (): Promise<UpdateStatus> => fetchApi('/api/updates/check', { method: 'POST' }),
+
+  getSecurityGate: (): Promise<SecurityGateStatus> =>
+    fetchApi('/api/updates/security-gate'),
+
+  approveSecurityGate: (
+    durationMinutes: number,
+    reason?: string
+  ): Promise<SecurityGateStatus> =>
+    fetchApi('/api/updates/security-gate/approve', {
+      method: 'POST',
+      body: JSON.stringify({ durationMinutes, reason }),
+    }),
+
+  revokeSecurityGate: (): Promise<SecurityGateStatus> =>
+    fetchApi('/api/updates/security-gate/revoke', { method: 'POST' }),
 
   updateMultibase: (targetVersion?: string): Promise<{ success: boolean; message: string; targetVersion: string | null }> =>
     fetchApi('/api/updates/multibase', {

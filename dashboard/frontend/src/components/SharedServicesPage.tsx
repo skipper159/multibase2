@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Activity, AlertTriangle, CircleDot, Cpu, HardDrive, Loader2, RotateCw, Server, X } from 'lucide-react';
+import { Activity, AlertTriangle, CircleDot, Clock3, Cpu, HardDrive, Loader2, RotateCw, Server, ShieldCheck, ShieldOff, X } from 'lucide-react';
 import type { SharedServiceStatus } from '../types';
 import { useRestartSharedService } from '../hooks/useShared';
+import { useApproveSecurityGate, useRevokeSecurityGate, useSecurityGate } from '../hooks/useUpdates';
 
 interface SharedServicesPageProps {
   services: SharedServiceStatus[];
@@ -39,8 +40,13 @@ const serviceDescriptions: Record<string, string> = {
 
 export default function SharedServicesPage({ services }: SharedServicesPageProps) {
   const restartMutation = useRestartSharedService();
+  const { data: securityGate, isLoading: securityGateLoading } = useSecurityGate();
+  const approveSecurityGate = useApproveSecurityGate();
+  const revokeSecurityGate = useRevokeSecurityGate();
   const [restartingService, setRestartingService] = useState<string | null>(null);
   const [restartTarget, setRestartTarget] = useState<string | null>(null);
+  const [approvalDuration, setApprovalDuration] = useState(60);
+  const [approvalReason, setApprovalReason] = useState('');
 
   const handleConfirmRestart = async () => {
     if (!restartTarget) return;
@@ -62,6 +68,23 @@ export default function SharedServicesPage({ services }: SharedServicesPageProps
         <h2 className='text-xl font-semibold'>Shared Services</h2>
         <p className='text-sm text-muted-foreground mt-1'>Health, resource usage and network endpoints for the shared stack.</p>
       </div>
+
+      <SecurityGateCard
+        securityGate={securityGate}
+        isLoading={securityGateLoading}
+        approvalDuration={approvalDuration}
+        approvalReason={approvalReason}
+        onDurationChange={setApprovalDuration}
+        onReasonChange={setApprovalReason}
+        onApprove={async () => {
+          await approveSecurityGate.mutateAsync({ durationMinutes: approvalDuration, reason: approvalReason });
+          setApprovalReason('');
+        }}
+        onRevoke={() => revokeSecurityGate.mutate()}
+        approving={approveSecurityGate.isPending}
+        revoking={revokeSecurityGate.isPending}
+        error={approveSecurityGate.error || revokeSecurityGate.error}
+      />
 
       <div className='grid grid-cols-1 xl:grid-cols-2 gap-5'>
         {services.map((service) => {
@@ -210,6 +233,123 @@ export default function SharedServicesPage({ services }: SharedServicesPageProps
         </div>
       )}
     </div>
+  );
+}
+
+function SecurityGateCard({
+  securityGate,
+  isLoading,
+  approvalDuration,
+  approvalReason,
+  onDurationChange,
+  onReasonChange,
+  onApprove,
+  onRevoke,
+  approving,
+  revoking,
+  error,
+}: {
+  securityGate?: {
+    status: 'blocked' | 'ready';
+    reason: string | null;
+    source: 'none' | 'environment' | 'web';
+    expiresAt: string | null;
+    approvedBy: { username: string } | null;
+  };
+  isLoading: boolean;
+  approvalDuration: number;
+  approvalReason: string;
+  onDurationChange: (duration: number) => void;
+  onReasonChange: (reason: string) => void;
+  onApprove: () => Promise<void>;
+  onRevoke: () => void;
+  approving: boolean;
+  revoking: boolean;
+  error: Error | null;
+}) {
+  if (isLoading) {
+    return (
+      <div className='rounded-lg border border-border bg-card px-5 py-4 text-sm text-muted-foreground'>
+        Checking image update security gate…
+      </div>
+    );
+  }
+
+  const isReady = securityGate?.status === 'ready';
+  const environmentApproval = securityGate?.source === 'environment';
+  const expiry = securityGate?.expiresAt ? new Date(securityGate.expiresAt).toLocaleString() : null;
+
+  return (
+    <section className={`rounded-lg border px-5 py-4 ${isReady ? 'border-brand-500/30 bg-brand-500/5' : 'border-amber-500/30 bg-amber-500/5'}`}>
+      <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
+        <div className='flex items-start gap-3'>
+          {isReady ? <ShieldCheck className='mt-0.5 h-5 w-5 text-brand-400' /> : <ShieldOff className='mt-0.5 h-5 w-5 text-amber-400' />}
+          <div>
+            <h3 className='font-semibold'>Image Update Security Gate</h3>
+            <p className='mt-1 text-sm text-muted-foreground'>
+              {isReady
+                ? environmentApproval
+                  ? 'Image updates are enabled by the server environment configuration.'
+                  : `Image updates are approved until ${expiry}.`
+                : securityGate?.reason || 'Image updates are currently blocked.'}
+            </p>
+            {isReady && securityGate?.approvedBy && !environmentApproval && (
+              <p className='mt-1 text-xs text-muted-foreground'>Approved by {securityGate.approvedBy.username}.</p>
+            )}
+          </div>
+        </div>
+
+        {isReady ? (
+          !environmentApproval && (
+            <button
+              type='button'
+              onClick={onRevoke}
+              disabled={revoking}
+              className='inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-red-500/30 px-3 py-2 text-sm text-red-300 hover:bg-red-500/10 disabled:opacity-50'
+            >
+              {revoking ? <Loader2 className='h-4 w-4 animate-spin' /> : <ShieldOff className='h-4 w-4' />}
+              Revoke approval
+            </button>
+          )
+        ) : (
+          <div className='flex flex-col gap-2 sm:min-w-[360px]'>
+            <div className='flex gap-2'>
+              <label className='flex flex-1 items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm'>
+                <Clock3 className='h-4 w-4 text-muted-foreground' />
+                <span className='text-muted-foreground'>Duration</span>
+                <select
+                  value={approvalDuration}
+                  onChange={(event) => onDurationChange(Number(event.target.value))}
+                  className='ml-auto bg-transparent font-medium outline-none'
+                >
+                  <option value={30}>30 min</option>
+                  <option value={60}>60 min</option>
+                  <option value={120}>120 min</option>
+                  <option value={240}>240 min</option>
+                </select>
+              </label>
+              <button
+                type='button'
+                onClick={() => void onApprove()}
+                disabled={approving}
+                className='inline-flex items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50'
+              >
+                {approving ? <Loader2 className='h-4 w-4 animate-spin' /> : <ShieldCheck className='h-4 w-4' />}
+                Approve
+              </button>
+            </div>
+            <input
+              value={approvalReason}
+              onChange={(event) => onReasonChange(event.target.value)}
+              maxLength={500}
+              placeholder='Optional maintenance reason'
+              className='rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary'
+            />
+          </div>
+        )}
+      </div>
+      {error && <p className='mt-3 text-sm text-red-300'>{error.message}</p>}
+    </section>
   );
 }
 

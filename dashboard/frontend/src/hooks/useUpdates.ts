@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { updatesApi, UpdateStatus, DockerUpdateRequest } from '../lib/api';
+import { updatesApi, UpdateStatus, DockerUpdateRequest, SecurityGateStatus } from '../lib/api';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -35,6 +35,37 @@ export const useUpdateStatus = () =>
     staleTime: 1000 * 60 * 5, // 5 minutes – mirrors server-side cache
     retry: 1,
   });
+
+export const useSecurityGate = () =>
+  useQuery<SecurityGateStatus>({
+    queryKey: [...updateKeys.all, 'security-gate'],
+    queryFn: updatesApi.getSecurityGate,
+    refetchInterval: 30_000,
+    retry: 1,
+  });
+
+export const useApproveSecurityGate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ durationMinutes, reason }: { durationMinutes: number; reason?: string }) =>
+      updatesApi.approveSecurityGate(durationMinutes, reason),
+    onSuccess: (data) => {
+      queryClient.setQueryData([...updateKeys.all, 'security-gate'], data);
+      queryClient.invalidateQueries({ queryKey: updateKeys.status() });
+    },
+  });
+};
+
+export const useRevokeSecurityGate = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updatesApi.revokeSecurityGate,
+    onSuccess: (data) => {
+      queryClient.setQueryData([...updateKeys.all, 'security-gate'], data);
+      queryClient.invalidateQueries({ queryKey: updateKeys.status() });
+    },
+  });
+};
 
 // ──────────────────────────────────────────────
 // Mutations

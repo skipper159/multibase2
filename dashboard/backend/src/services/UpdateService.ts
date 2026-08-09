@@ -37,6 +37,7 @@ import { logger } from '../utils/logger';
 import { SHARED_SERVICES } from '../types';
 import { createAuditLogEntry } from '../middleware/auditLog';
 import { AUDIT_ACTIONS } from '../constants/auditActions';
+import prisma from '../lib/prisma';
 
 const execFileAsync = promisify(execFile);
 
@@ -107,10 +108,20 @@ export interface UpdateStatus {
     cacheTtlMs: number;
     cacheBypassed: boolean;
   };
-  securityGate: {
-    status: 'blocked' | 'ready';
-    reason: string | null;
-  };
+  securityGate: SecurityGateStatus;
+}
+
+export interface SecurityGateStatus {
+  status: 'blocked' | 'ready';
+  reason: string | null;
+  source: 'none' | 'environment' | 'web';
+  approvedAt: Date | null;
+  expiresAt: Date | null;
+  approvedBy: {
+    id: string;
+    username: string;
+    email: string;
+  } | null;
 }
 
 export interface TenantImageUpdateStatus {
@@ -170,6 +181,104 @@ export class UpdateService extends EventEmitter {
 
   get isInProgress(): boolean {
     return this._isInProgress;
+  }
+
+  async getSecurityGateStatus(): Promise<SecurityGateStatus> {
+    const now = new Date();
+    const legacyEnvironmentApproval = process.env.IMAGE_UPDATE_SECURITY_GATE === 'approved';
+
+    try {
+      const approval = await prisma.imageUpdateGateApproval.findFirst({
+        where: {
+          revokedAt: null,
+          expiresAt: { gt: now },
+        },
+        orderBy: { expiresAt: 'desc' },
+        include: {
+          approvedBy: {
+            select: { id: true, username: true, email: true },
+          },
+        },
+      });
+
+      if (approval) {
+        return {
+          status: 'ready',
+          reason: null,
+          source: 'web',
+          approvedAt: approval.approvedAt,
+          expiresAt: approval.expiresAt,
+          approvedBy: approval.approvedBy,
+        };
+      }
+    } catch (error) {
+      logger.error('Failed to read image update security gate:', error);
+      if (!legacyEnvironmentApproval) {
+        return {
+          status: 'blocked',
+          reason: 'Security gate status could not be verified because the approval store is unavailable.',
+          source: 'none',
+          approvedAt: null,
+          expiresAt: null,
+          approvedBy: null,
+        };
+      }
+    }
+
+    if (legacyEnvironmentApproval) {
+      return {
+        status: 'ready',
+        reason: null,
+        source: 'environment',
+        approvedAt: null,
+        expiresAt: null,
+        approvedBy: null,
+      };
+    }
+
+    return {
+      status: 'blocked',
+      reason: 'Production image updates remain blocked until an administrator approves a maintenance window.',
+      source: 'none',
+      approvedAt: null,
+      expiresAt: null,
+      approvedBy: null,
+    };
+  }
+
+  async approveSecurityGate(options: {
+    userId: string;
+    durationMinutes?: number;
+    reason?: string;
+  }): Promise<SecurityGateStatus> {
+    const durationMinutes = Math.min(Math.max(Math.round(options.durationMinutes ?? 60), 5), 240);
+    const approvedAt = new Date();
+    const expiresAt = new Date(approvedAt.getTime() + durationMinutes * 60 * 1000);
+
+    await prisma.imageUpdateGateApproval.updateMany({
+      where: { revokedAt: null, expiresAt: { gt: approvedAt } },
+      data: { revokedAt: approvedAt },
+    });
+    await prisma.imageUpdateGateApproval.create({
+      data: {
+        approvedById: options.userId,
+        reason: options.reason?.trim() || null,
+        approvedAt,
+        expiresAt,
+      },
+    });
+
+    this.cachedStatus = null;
+    return this.getSecurityGateStatus();
+  }
+
+  async revokeSecurityGate(): Promise<SecurityGateStatus> {
+    await prisma.imageUpdateGateApproval.updateMany({
+      where: { revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { revokedAt: new Date() },
+    });
+    this.cachedStatus = null;
+    return this.getSecurityGateStatus();
   }
 
   constructor(dockerManager: DockerManager, rootDir: string, projectsPath?: string) {
@@ -622,7 +731,7 @@ export class UpdateService extends EventEmitter {
     const projectPath = this.getProjectPath(instanceName);
     if (!fs.existsSync(projectPath)) throw new Error(`Instance ${instanceName} does not exist`);
 
-    const securityGateReady = process.env.IMAGE_UPDATE_SECURITY_GATE === 'approved';
+    const securityGate = await this.getSecurityGateStatus();
     return {
       instanceName,
       services: await this.getTenantDockerServiceInfo(instanceName, forceRefresh),
@@ -630,12 +739,7 @@ export class UpdateService extends EventEmitter {
       checkedAt: new Date(),
       cacheTtlMs: this.CACHE_TTL_MS,
       cacheBypassed: forceRefresh,
-      securityGate: {
-        status: securityGateReady ? 'ready' : 'blocked',
-        reason: securityGateReady
-          ? null
-          : 'Production image updates remain blocked until the documented incident and security approval is complete.',
-      },
+      securityGate,
     };
   }
 
@@ -661,7 +765,7 @@ export class UpdateService extends EventEmitter {
     const docker = allDocker.filter((service) => service.category === 'shared');
     const tenantDocker = allDocker.filter((service) => service.category !== 'shared');
 
-    const securityGateReady = process.env.IMAGE_UPDATE_SECURITY_GATE === 'approved';
+    const securityGate = await this.getSecurityGateStatus();
     const latestRegistryCheck = allDocker
       .map((service) => service.checkedAt)
       .filter((value): value is Date => value instanceof Date)
@@ -685,12 +789,7 @@ export class UpdateService extends EventEmitter {
         cacheTtlMs: this.CACHE_TTL_MS,
         cacheBypassed: forceRefresh,
       },
-      securityGate: {
-        status: securityGateReady ? 'ready' : 'blocked',
-        reason: securityGateReady
-          ? null
-          : 'Production image updates remain blocked until the documented incident and security approval is complete.',
-      },
+      securityGate,
     };
 
     this.cachedStatus = status;
@@ -984,7 +1083,8 @@ export class UpdateService extends EventEmitter {
     this.emit('update:start', { type: 'tenantDocker', instanceName, services });
 
     try {
-      if (process.env.IMAGE_UPDATE_SECURITY_GATE !== 'approved' || options.confirmSafetyGate !== true) {
+      const securityGate = await this.getSecurityGateStatus();
+      if (securityGate.status !== 'ready' || options.confirmSafetyGate !== true) {
         throw new Error(
           'Security gate blocked: incident/forensic approval and explicit maintenance confirmation are required.'
         );
@@ -1210,7 +1310,8 @@ export class UpdateService extends EventEmitter {
     this.emit('update:start', { type: 'tenantDocker', instanceName, services, mode: 'rollback' });
 
     try {
-      if (process.env.IMAGE_UPDATE_SECURITY_GATE !== 'approved' || options.confirmSafetyGate !== true) {
+      const securityGate = await this.getSecurityGateStatus();
+      if (securityGate.status !== 'ready' || options.confirmSafetyGate !== true) {
         throw new Error('Security gate blocked: explicit maintenance confirmation is required.');
       }
       if (!fs.existsSync(path.join(projectPath, 'docker-compose.yml'))) {
@@ -1563,7 +1664,8 @@ export class UpdateService extends EventEmitter {
         throw new Error('PostgreSQL image updates require separate manual approval.');
       }
     }
-    if (process.env.IMAGE_UPDATE_SECURITY_GATE !== 'approved' || options.confirmSafetyGate !== true) {
+    const securityGate = await this.getSecurityGateStatus();
+    if (securityGate.status !== 'ready' || options.confirmSafetyGate !== true) {
       throw new Error(
         'Security gate blocked: incident/forensic approval and explicit maintenance confirmation are required.'
       );
