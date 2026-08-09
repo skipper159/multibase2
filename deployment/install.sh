@@ -1245,35 +1245,33 @@ start_redis() {
 }
 
 start_docker_proxy() {
-    if [ "$DEPLOY_MODE" = "split-frontend" ]; then
-        return
-    fi
-
-    step "Starting Docker Socket Proxy..."
-
     local proxy_container="multibase-docker-proxy"
     if docker ps --format '{{.Names}}' | grep -q "^${proxy_container}$"; then
         step_ok "Docker Socket Proxy already running"
+        return 0
+    fi
+
+    docker rm -f "$proxy_container" &>/dev/null || true
+    if docker run -d \
+        --name "$proxy_container" \
+        --restart unless-stopped \
+        -p 127.0.0.1:2378:2375 \
+        -v /var/run/docker.sock:/var/run/docker.sock:ro \
+        -e CONTAINERS=1 \
+        -e POST=1 \
+        -e IMAGES=1 \
+        -e NETWORKS=1 \
+        -e INFO=1 \
+        -e VERSION=1 \
+        -e PING=1 \
+        -e EVENTS=1 \
+        -e VOLUMES=0 \
+        -e BUILD=0 \
+        -e PRIVILEGED=0 \
+        tecnativa/docker-socket-proxy >> "$LOG_FILE" 2>&1; then
+        step_ok "Docker Socket Proxy active (127.0.0.1:2378)"
     else
-        docker rm -f "$proxy_container" &>/dev/null || true
-        docker run -d \
-            --name "$proxy_container" \
-            --restart unless-stopped \
-            -p 127.0.0.1:2378:2375 \
-            -v /var/run/docker.sock:/var/run/docker.sock:ro \
-            -e CONTAINERS=1 \
-            -e POST=1 \
-            -e IMAGES=1 \
-            -e NETWORKS=1 \
-            -e INFO=1 \
-            -e VERSION=1 \
-            -e PING=1 \
-            -e EVENTS=1 \
-            -e VOLUMES=0 \
-            -e BUILD=0 \
-            -e PRIVILEGED=0 \
-            tecnativa/docker-socket-proxy >> "$LOG_FILE" 2>&1
-        step_new "Docker Socket Proxy started on 127.0.0.1:2378"
+        log_warning "Could not start Docker Socket Proxy (Docker Hub rate limit 429). Falling back to direct socket connection."
     fi
 }
 
