@@ -1873,7 +1873,7 @@ run_update() {
         error_exit "No installation found at $INSTALL_DIR"
     fi
 
-    TOTAL_STEPS=7
+    TOTAL_STEPS=8
     CURRENT_STEP=0
 
     step "Pulling latest changes..."
