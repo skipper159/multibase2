@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.1.6" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.7" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -1847,9 +1847,13 @@ run_update() {
     sudo -u "$INSTALL_USER" git reset --hard origin/main >> "$LOG_FILE" 2>&1
     step_ok "Repository updated"
 
+    step "Installing workspace dependencies..."
+    cd "$INSTALL_DIR"
+    sudo -u "$INSTALL_USER" npm ci >> "$LOG_FILE" 2>&1
+    step_ok "Workspace dependencies installed"
+
     step "Rebuilding backend..."
     cd "$INSTALL_DIR/dashboard/backend"
-    sudo -u "$INSTALL_USER" npm ci >> "$LOG_FILE" 2>&1
     sudo -u "$INSTALL_USER" npx prisma generate >> "$LOG_FILE" 2>&1
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
     step_ok "Backend built"
@@ -1861,8 +1865,6 @@ run_update() {
         tail -20 "$LOG_FILE" >&2
         exit 1
     fi
-    # Prune devDependencies omitted to prevent empty node_modules under NPM 10+
-    # sudo -u "$INSTALL_USER" npm prune --omit=dev >> "$LOG_FILE" 2>&1
     step_ok "Migrations applied"
 
     step "Rebuilding frontend..."
@@ -1881,7 +1883,6 @@ VITE_ROOT_DOMAIN=${_root_domain}
 ENVEOF
         step_ok "Frontend .env.production updated (VITE_API_URL=${_backend_url})"
     fi
-    sudo -u "$INSTALL_USER" npm ci >> "$LOG_FILE" 2>&1
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
     step_ok "Frontend built"
 
@@ -1902,12 +1903,12 @@ ENVEOF
     step_ok "Nginx reloaded"
 
     step "Verifying..."
-    local backend_status
-    backend_status=$(sudo -u "$INSTALL_USER" -H pm2 jlist 2>/dev/null | grep -o '"name":"multibase-backend"[^}]*' | grep -o '"status":"[^"]*"' | cut -d'"' -f4 || echo "")
-    if [ "$backend_status" = "online" ] || curl -sI http://127.0.0.1:3001/api/health 2>/dev/null | grep -q "200"; then
+    if curl -sI http://127.0.0.1:3001/api/health 2>/dev/null | grep -q "200"; then
+        step_ok "Backend is running (online)"
+    elif sudo -u "$INSTALL_USER" -H pm2 describe "$PM2_APP_NAME" 2>/dev/null | grep -qi "online"; then
         step_ok "Backend is running (online)"
     else
-        step_fail "Backend is not running (status: ${backend_status:-unknown})"
+        step_fail "Backend is not running"
     fi
 
     echo ""
