@@ -15,9 +15,6 @@ export function createInstanceAuthRoutes() {
    */
   router.get('/verify-instance-access', async (req: Request, res: Response): Promise<any> => {
     try {
-      logger.info(
-        `verify-instance-access REQ: cookies=${JSON.stringify(req.cookies)}, rawCookie=${req.headers['cookie']}, authHeader=${req.headers.authorization}`
-      );
       // 1. Extract token from cookie (parsed or raw header) or Authorization header
       let token =
         req.cookies?.auth_token ||
@@ -71,11 +68,10 @@ export function createInstanceAuthRoutes() {
       }
 
       // 2. Validate session
-      logger.info(`verify-instance-access: token extracted = ${token ? token.substring(0, 10) + '...' : 'NONE'}`);
       const session = await AuthService.validateSession(token);
 
       if (!session) {
-        logger.info(`Instance access denied: Invalid session for token ${token ? token.substring(0, 10) + '...' : 'NONE'}`);
+        logger.debug('Instance access denied: Invalid session');
         return res.status(401).json({ error: 'Unauthorized - Invalid session' });
       }
 
