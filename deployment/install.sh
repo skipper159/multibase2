@@ -1925,7 +1925,17 @@ ENVEOF
         step_ok "Frontend .env.production updated (VITE_API_URL=${_backend_url})"
     fi
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
-    step_ok "Frontend built"
+    step "Ensuring Docker Socket Proxy..."
+    start_docker_proxy
+    if [ -f "$INSTALL_DIR/dashboard/backend/.env" ]; then
+        if ! grep -q '^DOCKER_HOST=' "$INSTALL_DIR/dashboard/backend/.env"; then
+            echo "" >> "$INSTALL_DIR/dashboard/backend/.env"
+            echo "DOCKER_HOST=tcp://127.0.0.1:2378" >> "$INSTALL_DIR/dashboard/backend/.env"
+        else
+            sed -i 's|^DOCKER_HOST=.*|DOCKER_HOST=tcp://127.0.0.1:2378|' "$INSTALL_DIR/dashboard/backend/.env"
+        fi
+    fi
+    step_ok "Docker Socket Proxy active (127.0.0.1:2378)"
 
     step "Restarting services..."
     if docker ps --format '{{.Names}}' | grep -q '^multibase-db$'; then
