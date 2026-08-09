@@ -68,10 +68,11 @@ export function createInstanceAuthRoutes() {
       }
 
       // 2. Validate session
+      logger.info(`verify-instance-access: token extracted = ${token ? token.substring(0, 10) + '...' : 'NONE'}`);
       const session = await AuthService.validateSession(token);
 
       if (!session) {
-        logger.debug('Instance access denied: Invalid session');
+        logger.info(`Instance access denied: Invalid session for token ${token ? token.substring(0, 10) + '...' : 'NONE'}`);
         return res.status(401).json({ error: 'Unauthorized - Invalid session' });
       }
 
