@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   useUpdateStatus,
   useCheckUpdates,
@@ -516,8 +517,8 @@ export default function UpdatesPage() {
                       <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                     </button>
 
-                    {/* Fixed-position dropdown – escapes backdrop-blur stacking context */}
-                    {releasePickerOpen && pickerAnchor && (
+                    {/* Portal dropdown – rendered at document.body to escape backdrop-filter stacking context */}
+                    {releasePickerOpen && pickerAnchor && createPortal(
                       <>
                         {/* Invisible backdrop to close picker */}
                         <div
@@ -566,7 +567,8 @@ export default function UpdatesPage() {
                             </button>
                           ))}
                         </div>
-                      </>
+                      </>,
+                      document.body
                     )}
                   </div>
                 )}
