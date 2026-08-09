@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.1.8" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.9" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -1893,6 +1893,9 @@ ENVEOF
     step_ok "Frontend built"
 
     step "Restarting services..."
+    if docker ps --format '{{.Names}}' | grep -q '^multibase-db$'; then
+        docker exec -u 0 multibase-db chown -R postgres:postgres /var/lib/postgresql/data >> "$LOG_FILE" 2>&1 || true
+    fi
     if [ -f "$INSTALL_DIR/ecosystem.config.js" ]; then
         sudo -u "$INSTALL_USER" -H pm2 startOrReload "$INSTALL_DIR/ecosystem.config.js" --update-env >> "$LOG_FILE" 2>&1
     elif sudo -u "$INSTALL_USER" -H pm2 describe "$PM2_APP_NAME" &>/dev/null; then

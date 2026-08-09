@@ -204,11 +204,24 @@ DOCKER_SOCKET_LOCATION=/var/run/docker.sock
         result = subprocess.run(cmd, cwd=str(self.shared_dir))
         if result.returncode == 0:
             self.ensure_postgres_auth_users_compat()
+            self._fix_postgres_volume_permissions()
             self._regenerate_nginx_tenant_configs()
             print("✅ Shared Infrastructure gestartet!")
         else:
             print("❌ Fehler beim Starten der Shared Infrastructure")
         return result.returncode
+
+    def _fix_postgres_volume_permissions(self):
+        """Ensure postgres data volume ownership matches running container postgres user."""
+        try:
+            subprocess.run(
+                ["docker", "exec", "-u", "0", "multibase-db", "chown", "-R", "postgres:postgres", "/var/lib/postgresql/data"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
 
     def _regenerate_nginx_tenant_configs(self):
         """Regenerate nginx gateway configs for all existing tenant projects."""
