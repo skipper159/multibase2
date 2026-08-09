@@ -15,8 +15,15 @@ export function createInstanceAuthRoutes() {
    */
   router.get('/verify-instance-access', async (req: Request, res: Response): Promise<any> => {
     try {
-      // 1. Extract token from cookie or Authorization header
-      const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
+      // 1. Extract token from cookie (parsed or raw header) or Authorization header
+      let token = req.cookies?.auth_token || req.cookies?.session;
+      if (!token && req.headers.cookie) {
+        const match = req.headers.cookie.match(/(?:^|;\s*)(?:auth_token|session)=([^;]+)/);
+        if (match) token = decodeURIComponent(match[1]);
+      }
+      if (!token) {
+        token = req.headers.authorization?.replace('Bearer ', '');
+      }
 
       if (!token) {
         // Fallback: Supabase instance API key (apikey header sent by Supabase JS SDK)
@@ -24,9 +31,11 @@ export function createInstanceAuthRoutes() {
         const instanceNameForKey = req.headers['x-instance-name'] as string;
 
         if (supabaseApiKey && instanceNameForKey) {
-          const instanceForKey = await prisma.instance.findUnique({ where: { id: instanceNameForKey } });
+          const instanceForKey = await prisma.instance.findFirst({
+            where: { OR: [{ id: instanceNameForKey }, { name: instanceNameForKey }] },
+          });
           if (!instanceForKey) {
-            return res.status(404).json({ error: 'Instance not found' });
+            return res.status(401).json({ error: 'Instance not found' });
           }
           try {
             const projectsPath =
@@ -69,18 +78,15 @@ export function createInstanceAuthRoutes() {
       const instanceName = req.headers['x-instance-name'] as string;
 
       if (instanceName) {
-        // Check if instance exists
-        const instance = await prisma.instance.findUnique({
-          where: { id: instanceName },
+        const instance = await prisma.instance.findFirst({
+          where: { OR: [{ id: instanceName }, { name: instanceName }] },
         });
 
         if (!instance) {
           logger.debug(`Instance access denied: Instance ${instanceName} not found`);
-          return res.status(404).json({ error: 'Instance not found' });
+          return res.status(401).json({ error: 'Instance not found' });
         }
 
-        // Optional: Role-based access control
-        // Viewer role could have read-only access
         if (session.user.role === 'viewer') {
           logger.debug(
             `Instance access granted (read-only): ${session.user.username} → ${instanceName}`
@@ -98,7 +104,7 @@ export function createInstanceAuthRoutes() {
       });
     } catch (error) {
       logger.error('Error verifying instance access:', error);
-      return res.status(500).json({ error: 'Internal server error' });
+      return res.status(401).json({ error: 'Unauthorized - Error verifying access' });
     }
   });
 
