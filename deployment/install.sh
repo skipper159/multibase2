@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.1.7" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.8" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -1838,7 +1838,7 @@ run_update() {
         error_exit "No installation found at $INSTALL_DIR"
     fi
 
-    TOTAL_STEPS=6
+    TOTAL_STEPS=7
     CURRENT_STEP=0
 
     step "Pulling latest changes..."
@@ -1846,6 +1846,12 @@ run_update() {
     sudo -u "$INSTALL_USER" git fetch origin main >> "$LOG_FILE" 2>&1
     sudo -u "$INSTALL_USER" git reset --hard origin/main >> "$LOG_FILE" 2>&1
     step_ok "Repository updated"
+
+    # Re-execute script if this is the first pass, ensuring updated install.sh runs cleanly from start
+    if [ -z "$INSTALL_REEXEC" ]; then
+        export INSTALL_REEXEC=1
+        exec bash "$0" "$@"
+    fi
 
     step "Installing workspace dependencies..."
     cd "$INSTALL_DIR"

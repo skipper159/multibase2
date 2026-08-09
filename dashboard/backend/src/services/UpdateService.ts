@@ -684,16 +684,18 @@ export class UpdateService extends EventEmitter {
       await this.runCommand('git', ['reset', '--hard', `origin/${gitBranch}`], this.rootDir);
       this.emitStepDone('git pull', 0);
 
-      // Step 1: backend npm install
+      // Step 1: workspace npm install
       // --include=dev: tsc braucht @types/* zum Bauen (wird nach dem Build entfernt)
       // --ignore-scripts: verhindert husky-Fehler aus dem Root-workspace prepare-Script
       this.emitStep('backend install', 1, steps.length);
-      const backendDir = path.join(this.rootDir, 'dashboard', 'backend');
+      this.emit('update:log', { line: 'Installing workspace dependencies...' });
       await this.runCommand(
         'npm',
         ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
-        backendDir
+        this.rootDir
       );
+
+      const backendDir = path.join(this.rootDir, 'dashboard', 'backend');
       // Prisma-Client explizit generieren (durch --ignore-scripts übersprungen)
       await this.runCommand('npx', ['prisma', 'generate'], backendDir);
       // Backend kompilieren (TypeScript -> JavaScript)
@@ -707,12 +709,6 @@ export class UpdateService extends EventEmitter {
         // frontend build step (both local and split with VPS1 vars)
         const buildStepIdx = steps.indexOf('frontend build');
         this.emitStep('frontend build', buildStepIdx, steps.length);
-        this.emit('update:log', { line: 'Installing frontend dependencies...' });
-        await this.runCommand(
-          'npm',
-          ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
-          frontendDir
-        );
         this.emit('update:log', { line: 'Building frontend...' });
         const buildEnv: Record<string, string> = {};
         if (process.env.BACKEND_URL) buildEnv['VITE_API_URL'] = process.env.BACKEND_URL;
