@@ -356,6 +356,9 @@ function getSharedServicePorts(
     vector: [{ label: 'Vector health', container: 9001, protocol: 'http', public: false }],
     imgproxy: [{ label: 'imgproxy', container: 5001, protocol: 'http', public: false }],
     'docker-proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: true }],
+    'docker_proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: true }],
+    'multibase-docker-proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: true }],
+    dockerproxy: [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: true }],
   };
 
   return definitions[serviceName] || [];

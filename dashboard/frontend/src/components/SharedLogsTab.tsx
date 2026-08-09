@@ -4,6 +4,8 @@ import { useSharedLogs } from '../hooks/useShared';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { SharedServiceStatus } from '../types';
 
+import { serviceLabels } from './SharedServicesPage';
+
 interface SharedLogsTabProps {
   services: SharedServiceStatus[];
 }
@@ -66,7 +68,7 @@ export default function SharedLogsTab({ services }: SharedLogsTabProps) {
 
   return (
     <div className='space-y-4'>
-      <div className='glass-card p-4'>
+      <div className='bg-card border rounded-lg p-4'>
         <div className='flex items-center justify-between gap-4'>
           <div className='flex items-center gap-4 flex-1'>
             <select
@@ -84,7 +86,7 @@ export default function SharedLogsTab({ services }: SharedLogsTabProps) {
               <option value=''>Select Service (or All)</option>
               {services.map((service) => (
                 <option key={service.name} value={service.name}>
-                  {service.name}
+                  {serviceLabels[service.name] || service.name}
                 </option>
               ))}
             </select>

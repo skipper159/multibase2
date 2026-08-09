@@ -7,7 +7,7 @@ interface SharedServicesPageProps {
   services: SharedServiceStatus[];
 }
 
-const serviceLabels: Record<string, string> = {
+export const serviceLabels: Record<string, string> = {
   db: 'PostgreSQL',
   studio: 'Studio',
   analytics: 'Analytics / Logflare',
@@ -17,6 +17,9 @@ const serviceLabels: Record<string, string> = {
   pooler: 'Pooler / Supavisor',
   'nginx-gateway': 'Nginx Gateway',
   'docker-proxy': 'Docker Socket Proxy',
+  'docker_proxy': 'Docker Socket Proxy',
+  'multibase-docker-proxy': 'Docker Socket Proxy',
+  dockerproxy: 'Docker Socket Proxy',
 };
 
 const serviceDescriptions: Record<string, string> = {
@@ -29,6 +32,9 @@ const serviceDescriptions: Record<string, string> = {
   pooler: 'Supavisor/PgBouncer for connection pooling and efficient database connections.',
   'nginx-gateway': 'Central HTTP gateway for API and Storage requests from instance projects.',
   'docker-proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
+  'docker_proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
+  'multibase-docker-proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
+  dockerproxy: 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
 };
 
 export default function SharedServicesPage({ services }: SharedServicesPageProps) {
