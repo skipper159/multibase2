@@ -442,27 +442,43 @@ export default function UpdatesPage() {
             </div>
           </div>
 
-          {/* Changelog */}
-          {mb?.changelog && (
-            <div className="mt-4">
-              <button
-                onClick={() => setChangelogOpen(v => !v)}
-                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {changelogOpen ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
+          {/* Changelog – updates when a version is selected in the picker */}
+          {(() => {
+            const releases = mb?.availableReleases ?? [];
+            const activeRelease = selectedVersion
+              ? releases.find(r => r.version === selectedVersion)
+              : null;
+            const activeChangelog = activeRelease?.changelog ?? mb?.changelog;
+            const changelogLabel = activeRelease
+              ? `v${activeRelease.version} – ${activeRelease.name || activeRelease.version}`
+              : mb?.latest
+                ? `v${mb.latest} (Latest)`
+                : null;
+            if (!activeChangelog) return null;
+            return (
+              <div className="mt-4">
+                <button
+                  onClick={() => setChangelogOpen(v => !v)}
+                  className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {changelogOpen ? (
+                    <ChevronUp className="w-4 h-4" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4" />
+                  )}
+                  {changelogOpen ? 'Hide' : 'Show'} changelog
+                  {changelogLabel && (
+                    <span className="ml-1 font-mono text-xs text-brand-400/80">{changelogLabel}</span>
+                  )}
+                </button>
+                {changelogOpen && (
+                  <pre className="mt-2 p-4 bg-black/30 rounded-lg text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                    {activeChangelog}
+                  </pre>
                 )}
-                {changelogOpen ? 'Hide' : 'Show'} changelog
-              </button>
-              {changelogOpen && (
-                <pre className="mt-2 p-4 bg-black/30 rounded-lg text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
-                  {mb.changelog}
-                </pre>
-              )}
-            </div>
-          )}
+              </div>
+            );
+          })()}
 
           {/* Split-mode info */}
           {status?.frontendServe === 'split' && (
@@ -532,7 +548,7 @@ export default function UpdatesPage() {
                           {/* Latest option */}
                           <button
                             type="button"
-                            onClick={() => { setSelectedVersion(null); closeReleasePicker(); }}
+                            onClick={() => { setSelectedVersion(null); setChangelogOpen(false); closeReleasePicker(); }}
                             className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
                               !selectedVersion ? 'text-brand-400' : 'text-foreground'
                             }`}
@@ -545,7 +561,11 @@ export default function UpdatesPage() {
                             <button
                               key={rel.version}
                               type="button"
-                              onClick={() => { setSelectedVersion(rel.version); closeReleasePicker(); }}
+                              onClick={() => {
+                                setSelectedVersion(rel.version);
+                                if (rel.changelog) setChangelogOpen(true);
+                                closeReleasePicker();
+                              }}
                               className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm hover:bg-white/5 transition-colors ${
                                 selectedVersion === rel.version ? 'text-brand-400' : 'text-foreground'
                               }`}
