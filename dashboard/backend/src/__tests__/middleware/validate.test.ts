@@ -64,6 +64,8 @@ describe('validate middleware', () => {
       email: 'user@example.com',
       username: 'testuser',
       password: 'Admin123!',
+      captchaToken: 'signed-token',
+      captchaSolution: '7',
     };
 
     it('passes valid registration data', () => {

@@ -16,6 +16,7 @@ export const instanceKeys = {
   metrics: (name: string) => [...instanceKeys.all, 'metrics', name] as const,
   uptime: (name: string, days: number) => [...instanceKeys.all, 'uptime', name, days] as const,
   logs: (name: string, service?: string) => [...instanceKeys.all, 'logs', name, service] as const,
+  imageUpdates: (name: string) => [...instanceKeys.all, 'image-updates', name] as const,
 };
 
 // ... existing hooks ...
@@ -55,6 +56,70 @@ export const useInstance = (name: string) => {
     queryFn: () => instancesApi.get(name),
     enabled: !!name,
     refetchInterval: 5000, // Refetch every 5 seconds
+  });
+};
+
+export const useInstanceImageUpdates = (name: string) => {
+  return useQuery({
+    queryKey: instanceKeys.imageUpdates(name),
+    queryFn: () => instancesApi.getImageUpdates(name),
+    enabled: !!name,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+export const useCheckInstanceImageUpdates = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) => instancesApi.getImageUpdates(name, true),
+    onSuccess: (data, name) => {
+      queryClient.setQueryData(instanceKeys.imageUpdates(name), data);
+    },
+  });
+};
+
+export const useUpdateInstanceImages = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      name,
+      services,
+      confirmSafetyGate,
+      createBackup,
+    }: {
+      name: string;
+      services: string[];
+      confirmSafetyGate: boolean;
+      createBackup?: boolean;
+    }) => instancesApi.updateImages(name, services, { confirmSafetyGate, createBackup }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.imageUpdates(variables.name) });
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(variables.name) });
+    },
+  });
+};
+
+export const useRollbackInstanceImages = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      name,
+      services,
+      confirmSafetyGate,
+      createBackup,
+    }: {
+      name: string;
+      services: string[];
+      confirmSafetyGate: boolean;
+      createBackup?: boolean;
+    }) => instancesApi.rollbackImages(name, services, { confirmSafetyGate, createBackup }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: instanceKeys.imageUpdates(variables.name) });
+      queryClient.invalidateQueries({ queryKey: instanceKeys.detail(variables.name) });
+    },
   });
 };
 
@@ -105,7 +170,7 @@ export const useInstanceMetricsHistory = (
 };
 
 // Get instance logs
-export const useInstanceLogs = (name: string, service?: string, tail = 100) => {
+export const useInstanceLogs = (name: string, service?: string, tail = 500) => {
   return useQuery({
     queryKey: instanceKeys.logs(name, service),
     queryFn: () =>

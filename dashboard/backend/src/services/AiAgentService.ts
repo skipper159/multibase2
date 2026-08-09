@@ -829,7 +829,7 @@ class OpenAIAdapter implements ProviderAdapter {
     }));
 
     const response = await client.chat.completions.create({
-      model: model || 'gpt-4o-mini',
+      model: model || 'gpt-5.4-mini',
       messages: messages as any,
       tools: openaiTools,
       max_tokens: 2048,
@@ -915,7 +915,7 @@ class AnthropicAdapter implements ProviderAdapter {
     }));
 
     const response: any = await (client.messages as any).create({
-      model: model || 'claude-3-5-sonnet-20241022',
+      model: model || 'claude-sonnet-5',
       max_tokens: 2048,
       system: systemMsg?.content || '',
       messages: chatMessages as any,
@@ -976,7 +976,7 @@ class GeminiAdapter implements ProviderAdapter {
     };
 
     const genModel = genAI.getGenerativeModel({
-      model: model || 'gemini-2.0-flash',
+      model: model || 'gemini-3.6-flash',
       tools: geminiTools as any,
       systemInstruction: getSystemContent(systemMsg?.content),
     });
@@ -1050,7 +1050,7 @@ class OpenRouterAdapter implements ProviderAdapter {
     }));
 
     const response = await client.chat.completions.create({
-      model: model || 'openai/gpt-4o-mini',
+      model: model || 'openai/gpt-5.6-sol',
       messages: messages as any,
       tools: openaiTools,
       max_tokens: 2048,

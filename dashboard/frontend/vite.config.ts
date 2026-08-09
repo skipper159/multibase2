@@ -23,7 +23,7 @@ function getVersion(): string {
 
 // Read dynamic port configuration from environment
 // These are set by launch.sh in frontend/.env
-const FRONTEND_PORT = parseInt(process.env.VITE_PORT || '5173', 10);
+const FRONTEND_PORT = parseInt(process.env.VITE_PORT || '5174', 10);
 const BACKEND_URL = process.env.VITE_API_URL || 'http://localhost:3001';
 
 export default defineConfig({

@@ -966,7 +966,7 @@ export default function UserProfile() {
                       <div>
                         <p className='text-sm font-medium text-foreground'>Feedback / Feature Requests</p>
                         <p className='text-xs text-muted-foreground'>
-                          Zeigt den Feedback-Button auf der Landingpage an und aktiviert die /feedback Route.
+                          Shows the Feedback button on the landing page and enables the /feedback route.
                         </p>
                       </div>
                     </div>

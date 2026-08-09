@@ -46,6 +46,21 @@ export class DockerManager {
     }
   }
 
+  /** Return the full inspect document for status checks and safe update preflight. */
+  async inspectContainer(containerId: string): Promise<Docker.ContainerInspectInfo> {
+    return this.docker.getContainer(containerId).inspect();
+  }
+
+  /** Return image metadata, including immutable repository digests. */
+  async inspectImage(imageId: string): Promise<Docker.ImageInspectInfo> {
+    return this.docker.getImage(imageId).inspect();
+  }
+
+  /** Return Docker daemon disk information for update space checks. */
+  async getDiskUsage(): Promise<unknown> {
+    return this.docker.df();
+  }
+
   /**
    * List shared infrastructure containers (multibase-*)
    */
@@ -400,6 +415,30 @@ export class DockerManager {
       logger.info(`Restarted service: ${serviceName} for project ${projectName}`);
     } catch (error) {
       logger.error(`Error restarting service ${serviceName}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Restart one shared infrastructure container by its compose service name.
+   */
+  async restartSharedService(serviceName: string): Promise<void> {
+    try {
+      const containers = await this.listSharedContainers();
+      const container = containers.find((candidate) => {
+        const containerName = candidate.Names[0].replace('/', '');
+        const shortName = containerName.replace('multibase-', '');
+        return containerName === serviceName || shortName === serviceName;
+      });
+
+      if (!container) {
+        throw new Error(`Shared service ${serviceName} not found`);
+      }
+
+      await this.docker.getContainer(container.Id).restart();
+      logger.info(`Restarted shared service: ${serviceName}`);
+    } catch (error) {
+      logger.error(`Error restarting shared service ${serviceName}:`, error);
       throw error;
     }
   }

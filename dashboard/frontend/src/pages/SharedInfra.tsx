@@ -1,48 +1,46 @@
+import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
 import {
-  useSharedStatus,
-  useSharedDatabases,
-  useStartSharedInfra,
-  useStopSharedInfra,
-  useDeleteDatabase,
-} from '../hooks/useShared';
-import { useSystemMetrics } from '../hooks/useInstances';
-import GaugeChart from '../components/charts/GaugeChart';
-import {
-  Loader2,
   AlertCircle,
-  Play,
-  Square,
-  Database,
-  Server,
-  Activity,
-  HardDrive,
-  Trash2,
-  RefreshCw,
-  Cloud,
   CheckCircle2,
+  Cloud,
+  Database,
+  FileText,
+  LayoutDashboard,
+  Loader2,
+  Play,
+  RefreshCw,
+  Square,
   XCircle,
   AlertTriangle,
-  Network,
-  TrendingUp,
 } from 'lucide-react';
+import {
+  useSharedStatus,
+  useStartSharedInfra,
+  useStopSharedInfra,
+} from '../hooks/useShared';
+import SharedInfraOverview from '../components/SharedInfraOverview';
+import SharedLogsTab from '../components/SharedLogsTab';
+import SharedDatabasesPage from '../components/SharedDatabasesPage';
+
+const tabs = [
+  { key: 'overview', label: 'Overview', icon: LayoutDashboard, path: '/shared' },
+  { key: 'logs', label: 'Logs', icon: FileText, path: '/shared/logs' },
+  { key: 'databases', label: 'Databases', icon: Database, path: '/shared/databases' },
+] as const;
+
+type SharedSection = (typeof tabs)[number]['key'];
 
 export default function SharedInfra() {
+  const navigate = useNavigate();
+  const { section } = useParams<{ section?: string }>();
+  const activeSection: SharedSection = tabs.some((tab) => tab.key === section)
+    ? (section as SharedSection)
+    : 'overview';
   const { data: status, isLoading, error, refetch } = useSharedStatus();
-  const { data: dbData } = useSharedDatabases();
-  const { data: systemMetrics } = useSystemMetrics();
   const startMutation = useStartSharedInfra();
   const stopMutation = useStopSharedInfra();
-  const deleteMutation = useDeleteDatabase();
-
-  // Aggregate resource metrics from shared service containers
-  const runningServices = status?.services.filter((s) => s.status === 'running') ?? [];
-  const sharedTotalCpu = runningServices.reduce((sum, s) => sum + (s.cpu ?? 0), 0);
-  const sharedTotalMemoryMB = runningServices.reduce((sum, s) => sum + (s.memory ?? 0), 0);
-  const hostTotalMemoryMB = systemMetrics?.hostTotalMemory ?? 0;
-  const memoryPercent = hostTotalMemoryMB > 0 ? Math.min((sharedTotalMemoryMB / hostTotalMemoryMB) * 100, 100) : 0;
   const [confirmStop, setConfirmStop] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   if (isLoading) {
     return (
@@ -52,7 +50,7 @@ export default function SharedInfra() {
     );
   }
 
-  if (error) {
+  if (error || !status) {
     return (
       <div className='flex items-center justify-center min-h-screen'>
         <div className='text-center'>
@@ -71,21 +69,14 @@ export default function SharedInfra() {
   }
 
   const statusColor =
-    status?.status === 'running'
-      ? 'text-brand-400'
-      : status?.status === 'degraded'
-        ? 'text-yellow-400'
-        : 'text-red-400';
-
-  const StatusIcon =
-    status?.status === 'running' ? CheckCircle2 : status?.status === 'degraded' ? AlertTriangle : XCircle;
+    status.status === 'running' ? 'text-brand-400' : status.status === 'degraded' ? 'text-yellow-400' : 'text-red-400';
+  const StatusIcon = status.status === 'running' ? CheckCircle2 : status.status === 'degraded' ? AlertTriangle : XCircle;
 
   return (
     <div className='min-h-screen'>
-      {/* Page Header */}
       <header className='border-b border-white/5 bg-card/30 backdrop-blur-sm sticky top-0 z-20'>
         <div className='px-8 py-6'>
-          <div className='flex items-center justify-between'>
+          <div className='flex items-center justify-between gap-4'>
             <div className='flex items-center gap-4'>
               <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
                 <Cloud className='w-6 h-6 text-brand-400' />
@@ -95,10 +86,10 @@ export default function SharedInfra() {
                 <div className='flex items-center gap-2 mt-1'>
                   <StatusIcon className={`w-4 h-4 ${statusColor}`} />
                   <span className={`text-sm font-medium ${statusColor}`}>
-                    {status?.status === 'running' ? 'Running' : status?.status === 'degraded' ? 'Degraded' : 'Stopped'}
+                    {status.status === 'running' ? 'Running' : status.status === 'degraded' ? 'Degraded' : 'Stopped'}
                   </span>
                   <span className='text-muted-foreground text-sm'>
-                    — {status?.runningServices || 0}/{status?.totalServices || 0} Services
+                    — {status.runningServices || 0}/{status.totalServices || 0} Services
                   </span>
                 </div>
               </div>
@@ -109,18 +100,20 @@ export default function SharedInfra() {
                 <RefreshCw className='w-4 h-4' />
                 Refresh
               </button>
-
-              {status?.status === 'running' || status?.status === 'degraded' ? (
+              {status.status === 'running' || status.status === 'degraded' ? (
                 <button
-                  onClick={() => (confirmStop ? stopMutation.mutate() : setConfirmStop(true))}
+                  onClick={() => {
+                    if (confirmStop) {
+                      stopMutation.mutate();
+                      setConfirmStop(false);
+                    } else {
+                      setConfirmStop(true);
+                    }
+                  }}
                   disabled={stopMutation.isPending}
                   className='flex items-center gap-2 px-4 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors'
                 >
-                  {stopMutation.isPending ? (
-                    <Loader2 className='w-4 h-4 animate-spin' />
-                  ) : (
-                    <Square className='w-4 h-4' />
-                  )}
+                  {stopMutation.isPending ? <Loader2 className='w-4 h-4 animate-spin' /> : <Square className='w-4 h-4' />}
                   {confirmStop ? 'Confirm stop?' : 'Stop'}
                 </button>
               ) : (
@@ -129,11 +122,7 @@ export default function SharedInfra() {
                   disabled={startMutation.isPending}
                   className='btn-primary flex items-center gap-2 px-4 py-2'
                 >
-                  {startMutation.isPending ? (
-                    <Loader2 className='w-4 h-4 animate-spin' />
-                  ) : (
-                    <Play className='w-4 h-4' />
-                  )}
+                  {startMutation.isPending ? <Loader2 className='w-4 h-4 animate-spin' /> : <Play className='w-4 h-4' />}
                   Start
                 </button>
               )}
@@ -142,272 +131,29 @@ export default function SharedInfra() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className='container mx-auto px-6 py-8'>
-        {/* Stats Overview */}
-        <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8'>
-          <div className='glass-card p-6'>
-            <div className='flex items-center justify-between'>
-              <div>
-                <p className='text-sm text-muted-foreground'>Services</p>
-                <p className='text-3xl font-bold mt-1 text-foreground'>
-                  {status?.runningServices || 0}
-                  <span className='text-lg text-muted-foreground'>/{status?.totalServices || 0}</span>
-                </p>
-              </div>
-              <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
-                <Server className='w-6 h-6 text-brand-400' />
-              </div>
-            </div>
-          </div>
+        <nav className='flex items-center gap-1 border-b border-border mb-8 overflow-x-auto' aria-label='Shared Infrastructure sections'>
+          {tabs.map((tab) => {
+            const Icon = tab.icon;
+            const isActive = tab.key === activeSection;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => navigate(tab.path)}
+                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                  isActive ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Icon className='w-4 h-4' />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
 
-          <div className='glass-card p-6'>
-            <div className='flex items-center justify-between'>
-              <div>
-                <p className='text-sm text-muted-foreground'>Databases</p>
-                <p className='text-3xl font-bold mt-1 text-brand-400'>{dbData?.count || 0}</p>
-              </div>
-              <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
-                <Database className='w-6 h-6 text-brand-400' />
-              </div>
-            </div>
-          </div>
-
-          <div className='glass-card p-6'>
-            <div className='flex items-center justify-between'>
-              <div>
-                <p className='text-sm text-muted-foreground'>PostgreSQL</p>
-                <p className='text-lg font-mono mt-1 text-foreground'>:{status?.ports?.postgres || '-'}</p>
-              </div>
-              <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
-                <HardDrive className='w-6 h-6 text-brand-400' />
-              </div>
-            </div>
-          </div>
-
-          <div className='glass-card p-6'>
-            <div className='flex items-center justify-between'>
-              <div>
-                <p className='text-sm text-muted-foreground'>Studio</p>
-                <p className='text-lg font-mono mt-1 text-foreground'>:{status?.ports?.studio || '-'}</p>
-              </div>
-              <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
-                <Activity className='w-6 h-6 text-brand-400' />
-              </div>
-            </div>
-          </div>
-
-          <div className='glass-card p-6'>
-            <div className='flex items-center justify-between'>
-              <div>
-                <p className='text-sm text-muted-foreground'>Nginx Gateway</p>
-                <p className='text-lg font-mono mt-1 text-foreground'>:{status?.ports?.gateway || '-'}</p>
-              </div>
-              <div className='w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center'>
-                <Network className='w-6 h-6 text-brand-400' />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Resource Overview */}
-        {runningServices.length > 0 && (
-          <div className='bg-card border rounded-lg p-6 mb-8'>
-            <h2 className='text-xl font-semibold mb-6 flex items-center gap-2'>
-              <Activity className='w-5 h-5' />
-              Shared Stack Resources
-            </h2>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-8'>
-              {/* CPU */}
-              <div className='flex flex-col items-center'>
-                <GaugeChart
-                  label='Stack CPU'
-                  value={Math.min(sharedTotalCpu, 100)}
-                  displayValue={`${sharedTotalCpu.toFixed(1)}%`}
-                  icon={Activity}
-                  color='cyan'
-                  size='lg'
-                />
-                <div className='mt-4 text-center'>
-                  <p className='text-sm text-muted-foreground'>
-                    Combined across {runningServices.length} running containers
-                  </p>
-                </div>
-              </div>
-
-              {/* RAM */}
-              <div className='flex flex-col items-center'>
-                <GaugeChart
-                  label='Stack Memory'
-                  value={memoryPercent}
-                  displayValue={
-                    hostTotalMemoryMB > 0
-                      ? `${(sharedTotalMemoryMB / 1024).toFixed(1)} / ${(hostTotalMemoryMB / 1024).toFixed(0)} GB`
-                      : `${(sharedTotalMemoryMB / 1024).toFixed(1)} GB`
-                  }
-                  icon={TrendingUp}
-                  color='pink'
-                  size='lg'
-                />
-                <div className='mt-4 text-center'>
-                  <p className='text-sm text-muted-foreground'>Container RAM usage</p>
-                  {hostTotalMemoryMB > 0 && (
-                    <p className='text-xs text-muted-foreground/70 mt-1'>{memoryPercent.toFixed(1)}% of host memory</p>
-                  )}
-                </div>
-              </div>
-
-              {/* Disk */}
-              <div className='flex flex-col items-center'>
-                <GaugeChart
-                  label='Stack Disk'
-                  value={
-                    status?.diskUsedMB && systemMetrics?.hostDiskTotal
-                      ? Math.min((status.diskUsedMB / systemMetrics.hostDiskTotal) * 100, 100)
-                      : status?.diskUsedMB
-                        ? Math.min((status.diskUsedMB / (200 * 1024)) * 100, 100)
-                        : 0
-                  }
-                  displayValue={
-                    status?.diskUsedMB != null
-                      ? status.diskUsedMB >= 1024
-                        ? `${(status.diskUsedMB / 1024).toFixed(1)} GB`
-                        : `${status.diskUsedMB} MB`
-                      : '—'
-                  }
-                  icon={HardDrive}
-                  color='yellow'
-                  size='lg'
-                />
-                <div className='mt-4 text-center'>
-                  <p className='text-sm text-muted-foreground'>Shared volumes disk usage</p>
-                  {status?.diskUsedMB == null && (
-                    <p className='text-xs text-muted-foreground/70 mt-1'>Computing… (cached 30 min)</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Services Grid */}
-        <div className='bg-card border rounded-lg p-6 mb-8'>
-          <h2 className='text-xl font-semibold mb-6 flex items-center gap-2'>
-            <Server className='w-5 h-5' />
-            Shared Services
-          </h2>
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-            {status?.services.map((service) => {
-              const isRunning = service.status === 'running';
-              const isHealthy = service.health === 'healthy';
-              return (
-                <div
-                  key={service.name}
-                  className={`p-4 rounded-lg border ${isRunning
-                    ? isHealthy
-                      ? 'border-brand-500/30 bg-brand-500/5'
-                      : 'border-yellow-500/30 bg-yellow-500/5'
-                    : 'border-red-500/30 bg-red-500/5'
-                    }`}
-                >
-                  <div className='flex items-center justify-between mb-2'>
-                    <span className='font-medium text-foreground'>{service.name.replace('multibase-', '')}</span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isRunning
-                        ? isHealthy
-                          ? 'bg-brand-500/20 text-brand-400'
-                          : 'bg-yellow-500/20 text-yellow-400'
-                        : 'bg-red-500/20 text-red-400'
-                        }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${isRunning ? (isHealthy ? 'bg-brand-400' : 'bg-yellow-400') : 'bg-red-400'}`}
-                      />
-                      {isRunning ? (isHealthy ? 'Healthy' : 'Running') : 'Stopped'}
-                    </span>
-                  </div>
-                  {service.cpu !== undefined && (
-                    <div className='text-xs text-muted-foreground'>
-                      CPU: {service.cpu.toFixed(1)}% · Memory: {service.memory?.toFixed(0)} MB
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Database Cluster */}
-        <div className='bg-card border rounded-lg p-6'>
-          <h2 className='text-xl font-semibold mb-6 flex items-center gap-2'>
-            <Database className='w-5 h-5' />
-            Database Cluster
-            <span className='text-sm font-normal text-muted-foreground ml-2'>
-              ({dbData?.count || 0} project databases)
-            </span>
-          </h2>
-
-          {dbData && dbData.databases.length > 0 ? (
-            <div className='overflow-x-auto'>
-              <table className='w-full'>
-                <thead>
-                  <tr className='border-b border-white/10'>
-                    <th className='text-left py-3 px-4 text-sm font-medium text-muted-foreground'>Database</th>
-                    <th className='text-left py-3 px-4 text-sm font-medium text-muted-foreground'>Project</th>
-                    <th className='text-left py-3 px-4 text-sm font-medium text-muted-foreground'>Size</th>
-                    <th className='text-right py-3 px-4 text-sm font-medium text-muted-foreground'>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dbData.databases.map((db) => (
-                    <tr key={db.name} className='border-b border-white/5 hover:bg-white/5 transition-colors'>
-                      <td className='py-3 px-4 font-mono text-sm text-foreground'>{db.name}</td>
-                      <td className='py-3 px-4 text-sm text-muted-foreground'>{db.projectName}</td>
-                      <td className='py-3 px-4 text-sm text-muted-foreground'>{db.sizeFormatted}</td>
-                      <td className='py-3 px-4 text-right'>
-                        {deleteTarget === db.projectName ? (
-                          <div className='flex items-center justify-end gap-2'>
-                            <button
-                              onClick={() => {
-                                deleteMutation.mutate(db.projectName);
-                                setDeleteTarget(null);
-                              }}
-                              className='text-xs px-3 py-1 bg-red-500/20 text-red-400 rounded hover:bg-red-500/30'
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(null)}
-                              className='text-xs px-3 py-1 bg-white/10 text-muted-foreground rounded hover:bg-white/20'
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setDeleteTarget(db.projectName)}
-                            className='text-muted-foreground hover:text-red-400 transition-colors'
-                            title='Delete database'
-                          >
-                            <Trash2 className='w-4 h-4' />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className='text-center py-12'>
-              <Database className='w-12 h-12 text-muted-foreground/30 mx-auto mb-4' />
-              <p className='text-muted-foreground'>No project databases yet</p>
-              <p className='text-sm text-muted-foreground/70 mt-1'>
-                Create a cloud instance to automatically provision a database
-              </p>
-            </div>
-          )}
-        </div>
+        {activeSection === 'overview' && <SharedInfraOverview status={status} />}
+        {activeSection === 'logs' && <SharedLogsTab services={status.services} />}
+        {activeSection === 'databases' && <SharedDatabasesPage />}
       </main>
     </div>
   );

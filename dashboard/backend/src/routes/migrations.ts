@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import prisma from '../lib/prisma';
 import AuthService from '../services/AuthService';
+import BackupService from '../services/BackupService';
 import { logger } from '../utils/logger';
 import { auditLog } from '../middleware/auditLog';
 import fs from 'fs';
@@ -396,6 +397,158 @@ export function createMigrationRoutes() {
       }
     }
   );
+
+  /**
+   * GET /api/migrations/dumps
+   * List all standalone .sql dump files in the backups folder
+   */
+  router.get('/dumps', requireAdmin, requireScope(SCOPES.MIGRATIONS.READ), async (_req: Request, res: Response): Promise<any> => {
+    try {
+      const dumps = await BackupService.listSqlDumps();
+      res.json(dumps);
+    } catch (error) {
+      logger.error('Error listing SQL dumps:', error);
+      res.status(500).json({ error: 'Failed to list SQL dumps' });
+    }
+  });
+
+  /**
+   * GET /api/migrations/dumps/:filename
+   * Get content of a specific .sql dump file
+   */
+  router.get('/dumps/:filename', requireAdmin, requireScope(SCOPES.MIGRATIONS.READ), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const dump = await BackupService.readSqlDump(req.params.filename);
+      res.json(dump);
+    } catch (error) {
+      logger.error('Error reading SQL dump:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read SQL dump' });
+    }
+  });
+
+  /**
+   * GET /api/migrations/dumps/:filename/inspect
+   * Inspect metadata, table list, and statement count of a .sql dump file
+   */
+  router.get('/dumps/:filename/inspect', requireAdmin, requireScope(SCOPES.MIGRATIONS.READ), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const info = await BackupService.inspectSqlDump(req.params.filename);
+      res.json(info);
+    } catch (error) {
+      logger.error('Error inspecting SQL dump:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to inspect SQL dump' });
+    }
+  });
+
+  /**
+   * DELETE /api/migrations/dumps/:filename
+   * Delete a .sql dump file from server
+   */
+  router.delete('/dumps/:filename', requireAdmin, requireScope(SCOPES.MIGRATIONS.RUN), async (req: Request, res: Response): Promise<any> => {
+    try {
+      await BackupService.deleteSqlDump(req.params.filename);
+      res.json({ message: 'SQL dump deleted successfully' });
+    } catch (error) {
+      logger.error('Error deleting SQL dump:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to delete SQL dump' });
+    }
+  });
+
+  /**
+   * POST /api/migrations/dumps/bulk-delete
+   * Delete multiple .sql dump files
+   */
+  router.post('/dumps/bulk-delete', requireAdmin, requireScope(SCOPES.MIGRATIONS.RUN), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { filenames } = req.body;
+      if (!Array.isArray(filenames) || filenames.length === 0) {
+        return res.status(400).json({ error: 'filenames array is required' });
+      }
+
+      const result = await BackupService.bulkDeleteSqlDumps(filenames);
+      res.json({ message: `Deleted ${result.deleted} SQL dump(s)`, ...result });
+    } catch (error) {
+      logger.error('Error bulk deleting SQL dumps:', error);
+      res.status(500).json({ error: 'Failed to delete SQL dumps' });
+    }
+  });
+
+  /**
+   * POST /api/migrations/dumps/upload
+   * Upload a .sql dump file from the browser
+   */
+  router.post('/dumps/upload', requireAdmin, requireScope(SCOPES.MIGRATIONS.RUN), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { filename, content } = req.body;
+      if (!content) {
+        return res.status(400).json({ error: 'SQL content is required' });
+      }
+
+      const safeName = (filename || `uploaded-dump-${Date.now()}.sql`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+      const finalName = safeName.endsWith('.sql') ? safeName : `${safeName}.sql`;
+      const targetPath = path.join((BackupService as any).BACKUP_DIR || path.join(process.cwd(), '../backups'), finalName);
+
+      await fs.promises.writeFile(targetPath, content, 'utf-8');
+      const stats = await fs.promises.stat(targetPath);
+
+      logger.info(`Uploaded SQL dump: ${finalName} (${stats.size} bytes)`);
+      res.json({
+        message: 'SQL dump uploaded successfully',
+        filename: finalName,
+        size: stats.size,
+      });
+    } catch (error) {
+      logger.error('Error uploading SQL dump:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to upload SQL dump' });
+    }
+  });
+
+  /**
+   * POST /api/migrations/dumps/:filename/apply
+   * Apply a .sql dump to a target instance
+   */
+  router.post('/dumps/:filename/apply', requireAdmin, requireScope(SCOPES.MIGRATIONS.RUN), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { instanceId } = req.body;
+      if (!instanceId) {
+        return res.status(400).json({ error: 'instanceId is required' });
+      }
+
+      const filename = path.basename(req.params.filename);
+      const backupDir = (BackupService as any).BACKUP_DIR || path.join(process.cwd(), '../backups');
+      const sqlDumpPath = path.join(backupDir, filename);
+
+      if (!fs.existsSync(sqlDumpPath)) {
+        return res.status(404).json({ error: `SQL dump file ${filename} not found` });
+      }
+
+      const PROJECTS_PATH = process.env.PROJECTS_PATH || path.join(__dirname, '../../../projects');
+      const envPath = path.join(PROJECTS_PATH, instanceId, '.env');
+      if (!fs.existsSync(envPath)) {
+        return res.status(404).json({ error: `Instance ${instanceId} configuration not found` });
+      }
+
+      const envConfig = parseEnvFile(envPath);
+      const isCloud = !!envConfig.PROJECT_DB && !envConfig.POSTGRES_PORT;
+
+      let success = false;
+      if (isCloud) {
+        success = await BackupService.restoreCloudTenantDb(instanceId, sqlDumpPath);
+      } else {
+        success = await BackupService.restoreClassicInstanceDb(instanceId, sqlDumpPath);
+      }
+
+      if (!success) {
+        return res.status(500).json({ error: `Failed to restore SQL dump into instance ${instanceId}` });
+      }
+
+      logger.info(`Applied SQL dump ${filename} to instance ${instanceId}`);
+      res.json({ message: `Successfully applied ${filename} to instance ${instanceId}` });
+    } catch (error) {
+      logger.error('Error applying SQL dump:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to apply SQL dump' });
+    }
+  });
 
   return router;
 }

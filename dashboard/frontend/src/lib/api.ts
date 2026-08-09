@@ -132,6 +132,31 @@ export const instancesApi = {
     });
   },
 
+  getImageUpdates: (name: string, force = false): Promise<TenantImageUpdateStatus> =>
+    fetchApi<TenantImageUpdateStatus>(
+      `/api/instances/${name}/image-updates${force ? '?force=true' : ''}`
+    ),
+
+  updateImages: (
+    name: string,
+    services: string[],
+    options: { confirmSafetyGate: boolean; createBackup?: boolean }
+  ): Promise<{ success: boolean; message: string; services: string[] }> =>
+    fetchApi(`/api/instances/${name}/image-updates`, {
+      method: 'POST',
+      body: JSON.stringify({ services, ...options }),
+    }),
+
+  rollbackImages: (
+    name: string,
+    services: string[],
+    options: { confirmSafetyGate: boolean; createBackup?: boolean }
+  ): Promise<{ success: boolean; message: string; services: string[] }> =>
+    fetchApi(`/api/instances/${name}/image-updates/rollback`, {
+      method: 'POST',
+      body: JSON.stringify({ services, ...options }),
+    }),
+
   recreate: (name: string): Promise<{ message: string }> => {
     return fetchApi<{ message: string }>(`/api/instances/${name}/recreate`, {
       method: 'POST',
@@ -459,6 +484,45 @@ export const migrationsApi = {
   deleteTemplate: (id: number): Promise<void> => {
     return fetchApi<void>(`/api/migrations/templates/${id}`, {
       method: 'DELETE',
+    });
+  },
+
+  listDumps: (): Promise<Array<{ filename: string; size: number; createdAt: string; suggestedInstance?: string }>> => {
+    return fetchApi<Array<{ filename: string; size: number; createdAt: string; suggestedInstance?: string }>>('/api/migrations/dumps');
+  },
+
+  getDump: (filename: string): Promise<{ filename: string; content: string; truncated: boolean }> => {
+    return fetchApi<{ filename: string; content: string; truncated: boolean }>(`/api/migrations/dumps/${encodeURIComponent(filename)}`);
+  },
+
+  inspectDump: (filename: string): Promise<{ filename: string; size: number; createdAt: string; tables: string[]; statementCount: number; hasInsert: boolean; headerPreview: string }> => {
+    return fetchApi<any>(`/api/migrations/dumps/${encodeURIComponent(filename)}/inspect`);
+  },
+
+  deleteDump: (filename: string): Promise<void> => {
+    return fetchApi<void>(`/api/migrations/dumps/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  bulkDeleteDumps: (filenames: string[]): Promise<{ deleted: number; failed: number }> => {
+    return fetchApi<{ deleted: number; failed: number }>('/api/migrations/dumps/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ filenames }),
+    });
+  },
+
+  uploadDump: (filename: string, content: string): Promise<{ filename: string; size: number }> => {
+    return fetchApi<{ filename: string; size: number }>('/api/migrations/dumps/upload', {
+      method: 'POST',
+      body: JSON.stringify({ filename, content }),
+    });
+  },
+
+  applyDump: (filename: string, instanceId: string): Promise<{ message: string }> => {
+    return fetchApi<{ message: string }>(`/api/migrations/dumps/${encodeURIComponent(filename)}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ instanceId }),
     });
   },
 };
@@ -877,6 +941,15 @@ export const mcpApi = {
 export const sharedApi = {
   getStatus: (): Promise<SharedInfraStatus> => fetchApi('/api/shared/status'),
 
+  restartService: (service: string): Promise<{ message: string }> =>
+    fetchApi(`/api/shared/services/${service}/restart`, { method: 'POST' }),
+
+  getLogs: (service?: string, tail = 100): Promise<{ logs: string[] }> => {
+    const query = new URLSearchParams({ tail: tail.toString() });
+    if (service) query.set('service', service);
+    return fetchApi<{ logs: string[] }>(`/api/shared/logs?${query.toString()}`);
+  },
+
   start: (): Promise<{ success: boolean; message: string }> =>
     fetchApi('/api/shared/start', { method: 'POST' }),
 
@@ -1272,20 +1345,84 @@ export interface UpdateVersionInfo {
 
 export interface DockerServiceInfo {
   service: string;
+  containerName: string;
+  category: 'shared' | 'tenant' | 'temporary' | 'infrastructure' | 'other';
   image: string;
+  repository: string;
   tag: string;
+  configuredTag: string;
+  localImageId: string | null;
+  localDigest: string | null;
+  registryDigest: string | null;
+  latestRegistryTag: string | null;
+  targetTag: string | null;
+  targetDigest: string | null;
+  latestApprovedTag: string | null;
+  latestApprovedDigest: string | null;
+  updateAvailable: boolean;
+  digestMatches: boolean;
+  managed: boolean;
+  updatePolicy: 'reviewed' | 'manual' | null;
+  updateStatus:
+    | 'current'
+    | 'update_available'
+    | 'tag_outdated'
+    | 'digest_mismatch'
+    | 'registry_unreachable'
+    | 'not_managed'
+    | 'manual_approval_required'
+    | 'missing';
+  risk: 'low' | 'medium' | 'high';
+  checkError: string | null;
+  checkedAt: string | null;
   status: 'running' | 'stopped' | 'missing';
+}
+
+export interface DockerUpdateRequest {
+  services?: string[];
+  confirmSafetyGate: boolean;
+  confirmPostgres?: boolean;
+  createBackup?: boolean;
+}
+
+export interface TenantImageUpdateStatus {
+  instanceName: string;
+  services: DockerServiceInfo[];
+  previousTags: Record<string, {
+    previousTag: string;
+    previousImage: string;
+    previousDigest: string | null;
+    previousImageId: string | null;
+    updatedAt: string;
+  }>;
+  checkedAt: string;
+  cacheTtlMs: number;
+  cacheBypassed: boolean;
+  securityGate: {
+    status: 'blocked' | 'ready';
+    reason: string | null;
+  };
 }
 
 export interface UpdateStatus {
   multibase: UpdateVersionInfo;
   docker: DockerServiceInfo[];
+  tenantDocker: DockerServiceInfo[];
   isUpdateInProgress: boolean;
   lastCheckedAt: string | null;
   /** 'local' = single-server. 'split' = multi-server (rsync to VPS1 or CI). */
   frontendServe: 'local' | 'split';
   /** true if VPS1 rsync vars are configured (split mode with auto-deploy) */
   frontendRsync: boolean;
+  registry: {
+    checkedAt: string | null;
+    cacheTtlMs: number;
+    cacheBypassed: boolean;
+  };
+  securityGate: {
+    status: 'blocked' | 'ready';
+    reason: string | null;
+  };
 }
 
 export const updatesApi = {
@@ -1297,10 +1434,19 @@ export const updatesApi = {
     fetchApi('/api/updates/multibase', { method: 'POST' }),
 
   updateDocker: (
-    services?: string[]
+    services?: string[],
+    options: Omit<DockerUpdateRequest, 'services'> = { confirmSafetyGate: false }
   ): Promise<{ success: boolean; message: string; services: string[] }> =>
     fetchApi('/api/updates/docker', {
       method: 'POST',
-      body: JSON.stringify({ services }),
+      body: JSON.stringify({ services, ...options }),
+    }),
+
+  updatePostgres: (
+    options: { confirmSafetyGate: boolean; confirmPostgres: boolean; createBackup?: boolean }
+  ): Promise<{ success: boolean; message: string; services: string[] }> =>
+    fetchApi('/api/updates/postgres', {
+      method: 'POST',
+      body: JSON.stringify(options),
     }),
 };

@@ -107,7 +107,7 @@ channel.send({ type: 'broadcast', event: 'test', payload: { hello: 'world' } })`
                 </span>
               </div>
               <div className='text-sm text-muted-foreground'>
-                Tenant ID:{' '}
+                Instance ID:{' '}
                 <span className='font-mono text-foreground'>
                   {config?.tenantId ?? '—'}
                 </span>
@@ -149,7 +149,7 @@ channel.send({ type: 'broadcast', event: 'test', payload: { hello: 'world' } })`
             {saveMutation.isPending ? 'Saving…' : 'Save & Restart Container'}
           </button>
           <p className='text-xs text-muted-foreground'>
-            ⚠ Änderung startet den Realtime-Container neu (~5s Downtime)
+            ⚠ Changing this setting restarts the Realtime container (~5s downtime)
           </p>
         </div>
       </div>

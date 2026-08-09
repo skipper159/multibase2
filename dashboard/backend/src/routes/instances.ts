@@ -4,6 +4,7 @@ import { CreateInstanceRequest } from '../types';
 import InstanceManager from '../services/InstanceManager';
 import DockerManager from '../services/DockerManager';
 import MetricsCollector from '../services/MetricsCollector';
+import { UpdateService } from '../services/UpdateService';
 import { logger } from '../utils/logger';
 import { validate } from '../middleware/validate';
 import {
@@ -21,7 +22,8 @@ export function createInstanceRoutes(
   instanceManager: InstanceManager,
   dockerManager: DockerManager,
   prisma: PrismaClient,
-  metricsCollector?: MetricsCollector
+  metricsCollector?: MetricsCollector,
+  updateService?: UpdateService
 ): Router {
   const router = Router();
 
@@ -385,6 +387,7 @@ export function createInstanceRoutes(
       try {
         const { name } = req.params;
         if (!(await verifyInstanceOrg(req, res))) return;
+
         const { removeVolumes } = req.query;
 
         await instanceManager.deleteInstance(name, removeVolumes === 'true');
@@ -513,6 +516,163 @@ export function createInstanceRoutes(
       } catch (error: any) {
         logger.error(`Error recreating instance ${req.params.name}:`, error);
         res.status(500).json({ error: error.message || 'Failed to recreate instance' });
+      }
+    }
+  );
+
+  /**
+   * GET /api/instances/:name/image-updates
+   * Return image status for this instance's tenant services only.
+   */
+  router.get(
+    '/:name/image-updates',
+    requireUser,
+    requireOrgRole('member'),
+    requireScope(SCOPES.INSTANCES.READ),
+    async (req: Request, res: Response) => {
+      try {
+        if (!updateService) {
+          res.status(503).json({ error: 'Tenant image updates are not available' });
+          return;
+        }
+        if (!(await verifyInstanceOrg(req, res))) return;
+        const forceRefresh = req.query.force === 'true';
+        const status = await updateService.getTenantImageUpdateStatus(req.params.name, forceRefresh);
+        res.json(status);
+      } catch (error: any) {
+        logger.error(`Error checking tenant images for ${req.params.name}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to check tenant images' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/instances/:name/image-updates
+   * Manually update selected tenant services for this instance.
+   */
+  router.post(
+    '/:name/image-updates',
+    requireUser,
+    requireOrgRole('member'),
+    requireScope(SCOPES.INSTANCES.UPDATE),
+    auditLog('INSTANCE_IMAGE_UPDATE', { includeBody: true }),
+    async (req: Request, res: Response) => {
+      try {
+        if (!updateService) {
+          res.status(503).json({ error: 'Tenant image updates are not available' });
+          return;
+        }
+        if (!(await verifyInstanceOrg(req, res))) return;
+
+        const instanceRecord = await prisma.instance.findUnique({
+          where: { name: req.params.name },
+          select: { id: true },
+        });
+        if (!instanceRecord) {
+          res.status(404).json({ error: 'Instance not found' });
+          return;
+        }
+
+        const { services, confirmSafetyGate, createBackup } = req.body as {
+          services?: string[];
+          confirmSafetyGate?: boolean;
+          createBackup?: boolean;
+        };
+        if (!Array.isArray(services) || services.length === 0) {
+          res.status(400).json({ error: 'At least one tenant service must be selected' });
+          return;
+        }
+        if (confirmSafetyGate !== true) {
+          res.status(409).json({
+            error: 'Security and maintenance approval are required before starting the image update.',
+          });
+          return;
+        }
+        if (updateService.isInProgress) {
+          res.status(423).json({ error: 'An update is already in progress' });
+          return;
+        }
+
+        res.status(202).json({
+          success: true,
+          message: `Tenant image update started for ${req.params.name}`,
+          services,
+        });
+        updateService
+          .performTenantDockerUpdate(req.params.name, services, {
+            confirmSafetyGate: true,
+            createBackup: createBackup !== false,
+            backupInstanceId: instanceRecord.id,
+            requestedBy: String((req as any).user?.id || 'admin'),
+          })
+          .catch((error: Error) => logger.error(`Tenant image update failed for ${req.params.name}:`, error));
+      } catch (error: any) {
+        logger.error(`Error starting tenant image update for ${req.params.name}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to start tenant image update' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/instances/:name/image-updates/rollback
+   * Manually restore the recorded previous image for selected tenant services.
+   */
+  router.post(
+    '/:name/image-updates/rollback',
+    requireUser,
+    requireOrgRole('member'),
+    requireScope(SCOPES.INSTANCES.UPDATE),
+    auditLog('INSTANCE_IMAGE_ROLLBACK', { includeBody: true }),
+    async (req: Request, res: Response) => {
+      try {
+        if (!updateService) {
+          res.status(503).json({ error: 'Tenant image rollbacks are not available' });
+          return;
+        }
+        if (!(await verifyInstanceOrg(req, res))) return;
+        const instanceRecord = await prisma.instance.findUnique({
+          where: { name: req.params.name },
+          select: { id: true },
+        });
+        if (!instanceRecord) {
+          res.status(404).json({ error: 'Instance not found' });
+          return;
+        }
+
+        const { services, confirmSafetyGate, createBackup } = req.body as {
+          services?: string[];
+          confirmSafetyGate?: boolean;
+          createBackup?: boolean;
+        };
+        if (!Array.isArray(services) || services.length === 0) {
+          res.status(400).json({ error: 'At least one tenant service must be selected' });
+          return;
+        }
+        if (confirmSafetyGate !== true) {
+          res.status(409).json({ error: 'Maintenance confirmation is required before rollback.' });
+          return;
+        }
+        if (updateService.isInProgress) {
+          res.status(423).json({ error: 'An update is already in progress' });
+          return;
+        }
+
+        res.status(202).json({
+          success: true,
+          message: `Tenant image rollback started for ${req.params.name}`,
+          services,
+        });
+        updateService.performTenantDockerRollback(req.params.name, services, {
+          confirmSafetyGate: true,
+          createBackup: createBackup !== false,
+          backupInstanceId: instanceRecord.id,
+          requestedBy: String((req as any).user?.id || 'admin'),
+        }).catch((error: Error) =>
+          logger.error(`Tenant image rollback failed for ${req.params.name}:`, error)
+        );
+      } catch (error: any) {
+        logger.error(`Error starting tenant image rollback for ${req.params.name}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to start tenant image rollback' });
       }
     }
   );

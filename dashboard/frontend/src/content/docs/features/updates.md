@@ -54,6 +54,8 @@ git pull → backend install → frontend build → frontend deploy (rsync) → 
 
 ---
 
+`IMAGE_UPDATE_SECURITY_GATE=approved` must be set after incident/forensic review and secret rotation before production Docker images can be updated. Without this approval, the workflow remains blocked.
+
 ## Environment Variables
 
 ### Core
@@ -120,6 +122,27 @@ VPS1_USER=<frontend_user>
 VPS1_KEY=/home/multibase/.ssh/id_ed25519
 VPS1_FRONTEND_PATH=/path/to/web/root
 ```
+
+---
+
+## Docker Image Updates
+
+The Docker check compares more than tags. For every running, stopped, or temporary container it shows
+the local digest, registry digest, and approved target version. Registry results are cached for five
+minutes; **Check for Updates** bypasses this cache. A registry failure is shown as *Registry unavailable*
+and the container is never marked as up to date.
+
+Approved images are defined in `shared/image-versions.yml`. The matrix is used for shared services,
+new tenant stacks, and temporary Studio/Meta containers. Digest values should only be added after a
+successful staging test. PostgreSQL remains `manual` and is updated only through the dedicated confirmation workflow on the Updates page.
+
+Before a production image update, incident/forensic review, secret rotation, and a tested backup must
+be complete. The backend requires `IMAGE_UPDATE_SECURITY_GATE=approved`; the UI also requires explicit
+maintenance confirmation. Before recreating containers, `.env.shared`, an optional
+`docker-compose.override.yml`, and `docker compose config` are checked. A failed healthcheck rolls back
+to the previous local digests.
+
+Update reports and redacted Compose configurations are stored under `shared/.update-reports/`.
 
 ---
 

@@ -55,7 +55,7 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
       const data: CaptchaData = await res.json();
       setCaptcha(data);
     } catch {
-      toast.error('Captcha konnte nicht geladen werden.');
+      toast.error('Could not load the captcha.');
     } finally {
       setCaptchaLoading(false);
     }
@@ -162,11 +162,11 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
     }
 
     if (!captcha) {
-      setError('Bitte warte, bis das Captcha geladen ist.');
+      setError('Please wait until the captcha has loaded.');
       return;
     }
     if (!captchaSolution.trim()) {
-      setError('Bitte löse das Captcha.');
+      setError('Please solve the captcha.');
       return;
     }
 
@@ -435,7 +435,7 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
             {/* ── Math Captcha ── */}
             <div className='space-y-2 pt-1'>
               <label className='block text-sm font-medium text-foreground'>
-                Sicherheitsfrage <span className='text-xs text-muted-foreground'>(Bitte berechnen)</span>
+                Security question <span className='text-xs text-muted-foreground'>(Please calculate)</span>
               </label>
               
               <div className='flex items-center gap-2'>
@@ -450,7 +450,7 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
                       style={{ transform: 'scale(0.85)', transformOrigin: 'center' }}
                     />
                   ) : (
-                    <span className='text-xs text-muted-foreground'>Fehler beim Laden</span>
+                    <span className='text-xs text-muted-foreground'>Error loading</span>
                   )}
                 </div>
 
@@ -459,7 +459,7 @@ export default function AuthModal({ isOpen, onClose, initialView = 'login' }: Au
                   type='button'
                   onClick={fetchCaptcha}
                   disabled={captchaLoading || isLoading}
-                  title='Neue Aufgabe laden'
+                  title='Load new challenge'
                   className='p-2.5 rounded-md border border-border bg-secondary hover:bg-secondary/80 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 h-[50px] w-[50px] flex items-center justify-center'
                 >
                   <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin' : ''}`} />

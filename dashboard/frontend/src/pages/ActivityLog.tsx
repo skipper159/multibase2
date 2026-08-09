@@ -16,6 +16,9 @@ import {
   Users,
   Shield,
   Eye,
+  RefreshCw,
+  ArrowRight,
+  Database,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
@@ -208,6 +211,117 @@ function KeyValueRow({ keyName, value, depth }: { keyName: string; value: any; d
 }
 
 function ActionSummary({ action, details }: { action: string; details: any }) {
+  if (
+    action.includes('IMAGE_UPDATE') ||
+    action.includes('DOCKER_UPDATE') ||
+    action.includes('MULTIBASE_UPDATE')
+  ) {
+    const servicesList: Array<{ service: string; previousTag?: string; newTag?: string; targetTag?: string }> =
+      details?.services ||
+      details?.body?.services?.map((s: string) => ({ service: s })) ||
+      [];
+
+    const instanceName = details?.instanceName || details?.body?.instanceName;
+
+    return (
+      <div className='bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 mb-4 text-sm space-y-3'>
+        <div className='flex items-center justify-between border-b border-blue-500/20 pb-2'>
+          <p className='font-semibold text-blue-400 flex items-center gap-2'>
+            <RefreshCw className='w-4 h-4' />
+            {action.includes('MULTIBASE') ? 'Multibase System Update' : 'Instance / Service Image Update'}
+          </p>
+          {instanceName && (
+            <span className='px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono text-xs'>
+              Instance: {instanceName}
+            </span>
+          )}
+        </div>
+
+        {servicesList.length > 0 ? (
+          <div className='space-y-1.5'>
+            <p className='text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2'>
+              Updated Services & Versions ({servicesList.length})
+            </p>
+            <div className='grid grid-cols-1 gap-2'>
+              {servicesList.map((item, idx) => {
+                const prev = item.previousTag;
+                const next = item.newTag || item.targetTag;
+                return (
+                  <div
+                    key={idx}
+                    className='flex items-center justify-between bg-card/60 border border-border/50 rounded px-3 py-2 text-xs'
+                  >
+                    <span className='font-mono font-medium text-foreground'>{item.service}</span>
+                    <div className='flex items-center gap-2 font-mono'>
+                      {prev && <span className='text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded'>{prev}</span>}
+                      {prev && (next || prev) && <ArrowRight className='w-3 h-3 text-blue-400' />}
+                      {next ? (
+                        <span className='text-blue-400 bg-blue-500/15 border border-blue-500/30 px-1.5 py-0.5 rounded font-semibold'>
+                          {next}
+                        </span>
+                      ) : (
+                        <span className='text-muted-foreground italic'>Updated to target version</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : details?.body?.services ? (
+          <p className='text-xs text-muted-foreground'>
+            Services requested:{' '}
+            <strong className='text-foreground'>
+              {Array.isArray(details.body.services) ? details.body.services.join(', ') : String(details.body.services)}
+            </strong>
+          </p>
+        ) : (
+          <p className='text-xs text-muted-foreground'>System component update triggered.</p>
+        )}
+      </div>
+    );
+  }
+
+  if (action.startsWith('BACKUP_')) {
+    const backupName = details?.backupName || details?.name;
+    const backupType = details?.backupType || details?.type || details?.body?.type;
+    const instanceId = details?.instanceId || details?.body?.instanceId;
+
+    return (
+      <div className='bg-purple-500/10 border border-purple-500/20 rounded-lg p-4 mb-4 text-sm space-y-2'>
+        <div className='flex items-center justify-between border-b border-purple-500/20 pb-2'>
+          <p className='font-semibold text-purple-400 flex items-center gap-2'>
+            <Database className='w-4 h-4' />
+            {action === 'BACKUP_CREATE'
+              ? 'Backup Created'
+              : action === 'BACKUP_RESTORE'
+              ? 'Backup Restored'
+              : action === 'BACKUP_DELETE'
+              ? 'Backup Deleted'
+              : 'Backup Action'}
+          </p>
+          {backupType && (
+            <span className='px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 font-mono text-xs uppercase'>
+              Type: {backupType}
+            </span>
+          )}
+        </div>
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-1'>
+          <div>
+            <span className='text-muted-foreground'>Backup Name: </span>
+            <strong className='font-mono text-foreground'>{backupName || '—'}</strong>
+          </div>
+          {instanceId && (
+            <div>
+              <span className='text-muted-foreground'>Instance: </span>
+              <strong className='text-foreground'>{instanceId}</strong>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (action.includes('DELETE') || action.includes('_STOP') || action.includes('_REMOVE')) {
     return (
       <div className='bg-red-500/10 border border-red-500/20 rounded p-3 mb-4 text-sm'>

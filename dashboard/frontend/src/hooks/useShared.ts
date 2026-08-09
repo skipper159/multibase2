@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sharedApi } from '../lib/api';
+import { toast } from 'sonner';
 
 // =====================================================
 // Queries
@@ -29,6 +30,35 @@ export const useSharedDatabases = () =>
     queryFn: sharedApi.getDatabases,
     refetchInterval: 30000,
   });
+
+/**
+ * Get recent logs for all shared services or one selected service.
+ */
+export const useSharedLogs = (service?: string, tail = 500, enabled = false) =>
+  useQuery({
+    queryKey: ['shared', 'logs', service, tail],
+    queryFn: () => sharedApi.getLogs(service, tail),
+    enabled: enabled,
+    refetchInterval: enabled ? 15000 : false,
+  });
+
+/**
+ * Restart one shared infrastructure service.
+ */
+export const useRestartSharedService = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (service: string) => sharedApi.restartService(service),
+    onSuccess: (_, service) => {
+      queryClient.invalidateQueries({ queryKey: ['shared'] });
+      toast.success(`${service} restarted`);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to restart shared service');
+    },
+  });
+};
 
 // =====================================================
 // Mutations

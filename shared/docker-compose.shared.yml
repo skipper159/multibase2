@@ -14,10 +14,10 @@ services:
   # ============================================================
   db:
     container_name: multibase-db
-    image: supabase/postgres:15.8.1.085
+    image: ${SHARED_DB_IMAGE:-supabase/postgres:15.8.1.085}
     restart: unless-stopped
     ports:
-      - '${SHARED_PG_PORT:-5432}:5432'
+      - '127.0.0.1:${SHARED_PG_PORT:-5432}:5432'
     volumes:
       # DB Init Scripts (Supabase-Basis)
       - ./volumes/db/init/97-_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
@@ -67,10 +67,10 @@ services:
   # ============================================================
   studio:
     container_name: multibase-studio
-    image: ${SHARED_STUDIO_IMAGE:-supabase/studio:latest}
+    image: ${SHARED_STUDIO_IMAGE:-supabase/studio:2026.08.03-sha-022b374}
     restart: unless-stopped
     ports:
-      - '${SHARED_STUDIO_PORT:-3000}:3000'
+      - '127.0.0.1:${SHARED_STUDIO_PORT:-3000}:3000'
     healthcheck:
       test: ['CMD-SHELL', 'echo ok']
       interval: 10s
@@ -86,19 +86,19 @@ services:
       POSTGRES_PASSWORD: ${SHARED_POSTGRES_PASSWORD}
       DEFAULT_ORGANIZATION_NAME: ${SHARED_STUDIO_ORG:-Multibase}
       DEFAULT_PROJECT_NAME: ${SHARED_STUDIO_PROJECT:-default}
-      SUPABASE_URL: http://multibase-kong:8000
+      SUPABASE_URL: http://multibase-nginx-gateway:8000
       SUPABASE_PUBLIC_URL: ${SHARED_PUBLIC_URL:-http://localhost:8000}
       SUPABASE_ANON_KEY: ${SHARED_ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SHARED_SERVICE_ROLE_KEY}
+      # Required by newer Supabase Studio versions for PG Meta secret encryption.
+      PG_META_CRYPTO_KEY: ${SHARED_PG_META_CRYPTO_KEY:-${SHARED_SECRET_KEY_BASE}}
       AUTH_JWT_SECRET: ${SHARED_JWT_SECRET}
       LOGFLARE_API_KEY: ${SHARED_LOGFLARE_API_KEY}
       LOGFLARE_URL: http://multibase-analytics:4000
       NEXT_PUBLIC_ENABLE_LOGS: true
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
       SNIPPETS_MANAGEMENT_FOLDER: /home/studio/snippets
-      DOCKER_SOCKET_LOCATION: /var/run/docker.sock
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./volumes/snippets:/home/studio/snippets:Z
     networks:
       - multibase-shared
@@ -109,7 +109,7 @@ services:
   # ============================================================
   nginx-gateway:
     container_name: multibase-nginx-gateway
-    image: nginx:alpine
+    image: ${SHARED_NGINX_GATEWAY_IMAGE:-nginx:1.29.1-alpine}
     restart: unless-stopped
     ports:
       - '${SHARED_GATEWAY_PORT:-8000}:8000/tcp'
@@ -167,10 +167,10 @@ services:
   # ============================================================
   analytics:
     container_name: multibase-analytics
-    image: supabase/logflare:latest
+    image: ${SHARED_ANALYTICS_IMAGE:-supabase/logflare:1.43.1}
     restart: unless-stopped
     ports:
-      - '${SHARED_ANALYTICS_PORT:-4000}:4000'
+      - '127.0.0.1:${SHARED_ANALYTICS_PORT:-4000}:4000'
     deploy:
       resources:
         limits:
@@ -208,7 +208,7 @@ services:
   # ============================================================
   vector:
     container_name: multibase-vector
-    image: timberio/vector:0.53.0-alpine
+    image: ${SHARED_VECTOR_IMAGE:-timberio/vector:0.53.0-alpine}
     restart: unless-stopped
     volumes:
       - ./config/vector.yml:/etc/vector/vector.yml:ro,z
@@ -239,7 +239,7 @@ services:
   # ============================================================
   meta:
     container_name: multibase-meta
-    image: supabase/postgres-meta:v0.95.2
+    image: ${SHARED_META_IMAGE:-supabase/postgres-meta:v0.96.6}
     restart: unless-stopped
     depends_on:
       db:
@@ -253,6 +253,8 @@ services:
       PG_META_DB_NAME: postgres
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${SHARED_POSTGRES_PASSWORD}
+      PG_META_CRYPTO_KEY: ${SHARED_PG_META_CRYPTO_KEY:-${SHARED_SECRET_KEY_BASE}}
+      CRYPTO_KEY: ${SHARED_PG_META_CRYPTO_KEY:-${SHARED_SECRET_KEY_BASE}}
     networks:
       - multibase-shared
 
@@ -261,7 +263,7 @@ services:
   # ============================================================
   imgproxy:
     container_name: multibase-imgproxy
-    image: darthsim/imgproxy:latest
+    image: ${SHARED_IMGPROXY_IMAGE:-darthsim/imgproxy:v3.30.1}
     restart: unless-stopped
     volumes:
       - ./volumes/storage:/var/lib/storage:z
@@ -283,10 +285,10 @@ services:
   # ============================================================
   pooler:
     container_name: multibase-pooler
-    image: supabase/supavisor:2.7.4
+    image: ${SHARED_POOLER_IMAGE:-supabase/supavisor:2.9.5}
     restart: unless-stopped
     ports:
-      - '${SHARED_POOLER_PORT:-6543}:6543'
+      - '127.0.0.1:${SHARED_POOLER_PORT:-6543}:6543'
     volumes:
       - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
     healthcheck:

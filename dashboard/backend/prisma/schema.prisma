@@ -532,3 +532,18 @@ model Feedback {
   @@index([status])
   @@index([createdAt])
 }
+
+model StudioLease {
+  id           String   @id @default(uuid())
+  tenantName   String   @unique
+  studioPort   Int
+  activatedAt  DateTime @default(now())
+  lastAccessAt DateTime @default(now())
+  status       String   @default("active") // 'active' | 'expired' | 'stopped'
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantName])
+  @@index([status])
+}
+

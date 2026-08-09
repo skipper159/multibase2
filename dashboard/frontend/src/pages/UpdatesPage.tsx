@@ -4,9 +4,11 @@ import {
   useCheckUpdates,
   useUpdateMultibase,
   useUpdateDocker,
+  useUpdatePostgres,
   useUpdateLogs,
 } from '../hooks/useUpdates';
 import { DockerServiceInfo } from '../lib/api';
+import { UpdateConfirmationModal, UpdateProgressModal } from '../components/UpdateModal';
 import {
   RefreshCw,
   Download,
@@ -26,17 +28,6 @@ import {
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
-
-const SHARED_SERVICES = [
-  'multibase-db',
-  'multibase-studio',
-  'multibase-analytics',
-  'multibase-vector',
-  'multibase-imgproxy',
-  'multibase-meta',
-  'multibase-pooler',
-  'multibase-nginx-gateway',
-] as const;
 
 function ServiceStatusBadge({ status }: { status: DockerServiceInfo['status'] }) {
   if (status === 'running') {
@@ -59,6 +50,32 @@ function ServiceStatusBadge({ status }: { status: DockerServiceInfo['status'] })
     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-500/15 text-red-400">
       <XCircle className="w-3 h-3" />
       Not found
+    </span>
+  );
+}
+
+function ImageUpdateBadge({ service }: { service: DockerServiceInfo }) {
+  const labels: Record<DockerServiceInfo['updateStatus'], string> = {
+    current: 'Up to date',
+    update_available: 'Update available',
+    tag_outdated: 'Tag outdated',
+    digest_mismatch: 'Digest mismatch',
+    registry_unreachable: 'Registry unavailable',
+    not_managed: 'Not managed',
+    manual_approval_required: 'Manual approval required',
+    missing: 'Not found',
+  };
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+        service.updateStatus === 'current'
+          ? 'bg-brand-500/15 text-brand-400'
+          : service.risk === 'high'
+            ? 'bg-red-500/15 text-red-400'
+            : 'bg-yellow-500/15 text-yellow-400'
+      }`}
+    >
+      {labels[service.updateStatus]}
     </span>
   );
 }
@@ -165,14 +182,37 @@ export default function UpdatesPage() {
   const checkMutation = useCheckUpdates();
   const multibaseMutation = useUpdateMultibase();
   const dockerMutation = useUpdateDocker();
+  const postgresMutation = useUpdatePostgres();
   const liveState = useUpdateLogs();
 
+  useEffect(() => {
+    if (liveState.completed && (liveState.type === 'docker' || liveState.type === 'tenantDocker')) {
+      refetch();
+    }
+  }, [liveState.completed, liveState.type, refetch]);
+
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
-  const [confirmMultibase, setConfirmMultibase] = useState(false);
   const [changelogOpen, setChangelogOpen] = useState(false);
+  const [confirmation, setConfirmation] = useState<{
+    type: 'multibase' | 'docker' | 'postgres';
+    title: string;
+    description: string;
+    targets: string[];
+    warning?: string;
+    requiresText?: string;
+  } | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
 
   const isAnyUpdateRunning =
-    liveState.isRunning || multibaseMutation.isPending || dockerMutation.isPending;
+    liveState.isRunning || multibaseMutation.isPending || dockerMutation.isPending || postgresMutation.isPending;
+  const dockerServices = (status?.docker ?? []).filter(service => service.category === 'shared');
+  const selectableServices = dockerServices
+    .filter(service =>
+      service.service !== 'multibase-db' && service.managed &&
+      service.updatePolicy !== 'manual' && service.updateAvailable
+    )
+    .map(service => service.service);
+  const postgresService = dockerServices.find(service => service.service === 'multibase-db');
 
   const toggleService = (service: string) => {
     setSelectedServices(prev => {
@@ -184,25 +224,70 @@ export default function UpdatesPage() {
   };
 
   const toggleAll = () => {
-    if (selectedServices.size === SHARED_SERVICES.length) {
+    if (selectedServices.size === selectableServices.length) {
       setSelectedServices(new Set());
     } else {
-      setSelectedServices(new Set(SHARED_SERVICES));
+      setSelectedServices(new Set(selectableServices));
     }
   };
 
   const handleDockerUpdate = () => {
     const services = selectedServices.size > 0 ? [...selectedServices] : undefined;
-    dockerMutation.mutate(services);
+    const targetServices = services ?? selectableServices;
+    if (targetServices.length === 0) return;
+    setConfirmation({
+      type: 'docker',
+      title: 'Confirm shared image update',
+      description: `Update ${targetServices.length} shared Docker image(s) manually.`,
+      targets: targetServices,
+    });
+  };
+
+  const handleSingleDockerUpdate = (service: DockerServiceInfo) => {
+    if (!selectableServices.includes(service.service as (typeof selectableServices)[number])) return;
+    setConfirmation({
+      type: 'docker',
+      title: `Confirm ${service.service} update`,
+      description: 'Update this shared Docker image manually.',
+      targets: [service.service],
+    });
   };
 
   const handleMultibaseUpdate = () => {
-    if (!confirmMultibase) {
-      setConfirmMultibase(true);
-      return;
+    setConfirmation({
+      type: 'multibase',
+      title: 'Confirm Multibase update',
+      description: 'Update the Multibase dashboard application manually.',
+      targets: ['Multibase Dashboard'],
+      warning: 'The backend may restart and the connection can briefly drop. No Docker image backup is created for this application update.',
+    });
+  };
+
+  const handlePostgresUpdate = () => {
+    if (!postgresService) return;
+    setConfirmation({
+      type: 'postgres',
+      title: 'Manual PostgreSQL image update',
+      description: 'This is a high-risk infrastructure update and requires explicit confirmation.',
+      targets: ['multibase-db'],
+      warning: 'A full backup will be created first. PostgreSQL will be stopped briefly, and shared services may be affected if rollback is required.',
+      requiresText: 'UPDATE POSTGRESQL',
+    });
+  };
+
+  const startConfirmedUpdate = () => {
+    if (!confirmation) return;
+    const action = confirmation.type;
+    const targets = confirmation.targets;
+    setConfirmation(null);
+    setProgressOpen(true);
+    if (action === 'multibase') {
+      multibaseMutation.mutate();
+    } else if (action === 'postgres') {
+      postgresMutation.mutate({ confirmSafetyGate: true, confirmPostgres: true, createBackup: true });
+    } else {
+      dockerMutation.mutate({ services: targets, confirmSafetyGate: true, createBackup: true });
     }
-    setConfirmMultibase(false);
-    multibaseMutation.mutate();
   };
 
   if (isLoading) {
@@ -234,7 +319,6 @@ export default function UpdatesPage() {
   }
 
   const mb = status?.multibase;
-  const dockerServices = status?.docker ?? [];
 
   return (
     <div className="min-h-screen">
@@ -376,11 +460,7 @@ export default function UpdatesPage() {
             <button
               onClick={handleMultibaseUpdate}
               disabled={isAnyUpdateRunning || !mb?.hasUpdate}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                confirmMultibase
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30'
-                  : 'btn-primary'
-              } disabled:opacity-40 disabled:cursor-not-allowed`}
+              className='btn-primary flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed'
             >
               {multibaseMutation.isPending ||
               (liveState.isRunning && liveState.type === 'multibase') ? (
@@ -388,16 +468,8 @@ export default function UpdatesPage() {
               ) : (
                 <Download className="w-4 h-4" />
               )}
-              {confirmMultibase ? 'Confirm Update?' : 'Update Multibase'}
+              Update Multibase
             </button>
-            {confirmMultibase && (
-              <button
-                onClick={() => setConfirmMultibase(false)}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                Cancel
-              </button>
-            )}
           </div>
 
           {/* Live terminal */}
@@ -428,7 +500,11 @@ export default function UpdatesPage() {
 
             <button
               onClick={handleDockerUpdate}
-              disabled={isAnyUpdateRunning || dockerServices.length === 0}
+              disabled={
+                isAnyUpdateRunning ||
+                selectableServices.length === 0 ||
+                status?.securityGate.status !== 'ready'
+              }
               className="btn-primary flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {liveState.isRunning && liveState.type === 'docker' ? (
@@ -437,8 +513,8 @@ export default function UpdatesPage() {
                 <Download className="w-4 h-4" />
               )}
               {selectedServices.size > 0
-                ? `Pull ${selectedServices.size} Selected`
-                : 'Pull All Latest'}
+                ? `Update ${selectedServices.size} Selected`
+                : `Update All Available (${selectableServices.length})`}
             </button>
           </div>
 
@@ -450,21 +526,22 @@ export default function UpdatesPage() {
                   <th className="px-4 py-3 text-left">
                     <input
                       type="checkbox"
-                      checked={selectedServices.size === SHARED_SERVICES.length}
+                      checked={selectableServices.length > 0 && selectedServices.size === selectableServices.length}
                       onChange={toggleAll}
                       className="rounded border-white/20 bg-white/10 text-brand-500 focus:ring-brand-500"
                     />
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Service</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Image</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tag</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Image / Tag</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Digests</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
                 {dockerServices.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                       No shared services found. Start the shared infrastructure first.
                     </td>
                   </tr>
@@ -481,6 +558,7 @@ export default function UpdatesPage() {
                           type="checkbox"
                           checked={selectedServices.has(svc.service)}
                           onChange={() => toggleService(svc.service)}
+                          disabled={!selectableServices.includes(svc.service as (typeof selectableServices)[number])}
                           className="rounded border-white/20 bg-white/10 text-brand-500 focus:ring-brand-500"
                         />
                       </td>
@@ -492,9 +570,48 @@ export default function UpdatesPage() {
                         <span className="font-mono text-xs bg-white/10 px-2 py-0.5 rounded">
                           {svc.tag}
                         </span>
+                        <div className="mt-1 text-[10px] font-mono text-muted-foreground">
+                          local: {svc.localDigest?.slice(0, 19) || '—'}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground">
+                          registry: {svc.registryDigest?.slice(0, 19) || '—'}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Target: {svc.targetTag || '—'}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <ServiceStatusBadge status={svc.status} />
+                        <div className="mt-1">
+                          <ImageUpdateBadge service={svc} />
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => handleSingleDockerUpdate(svc)}
+                          disabled={
+                            isAnyUpdateRunning ||
+                            status?.securityGate.status !== 'ready' ||
+                            !svc.updateAvailable ||
+                            !selectableServices.includes(svc.service as (typeof selectableServices)[number])
+                          }
+                          className="btn-secondary inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={
+                            !svc.managed
+                              ? 'This image is not managed by the shared update workflow'
+                              : svc.updateAvailable
+                                ? 'Manually update this image'
+                                : 'No update is available'
+                          }
+                        >
+                          {dockerMutation.isPending && liveState.type === 'docker' ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Download className="w-3 h-3" />
+                          )}
+                          Update
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -504,9 +621,14 @@ export default function UpdatesPage() {
           </div>
 
           <p className="mt-3 text-xs text-muted-foreground">
-            Pulling images will briefly stop each service. Make sure no critical operations are
-            running. Select individual services or pull all at once.
+            Registry check: {status?.registry.checkedAt ? new Date(status.registry.checkedAt).toLocaleString() : 'unavailable'}
+            {' · '}Manual checks bypass the cache. PostgreSQL requires the dedicated confirmation workflow below.
           </p>
+          {status?.securityGate.status === 'blocked' && (
+            <div className="mt-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+              <strong>Security gate blocked:</strong> {status.securityGate.reason}
+            </div>
+          )}
 
           {/* Live terminal for docker updates */}
           {liveState.type === 'docker' && (
@@ -521,6 +643,56 @@ export default function UpdatesPage() {
           )}
         </section>
 
+        {/* PostgreSQL requires its own explicit approval */}
+        <section className='glass-card p-6'>
+          <div className='flex items-start justify-between gap-4'>
+            <div>
+              <h2 className='text-lg font-semibold'>PostgreSQL Image</h2>
+              <p className='mt-1 text-sm text-muted-foreground'>
+                PostgreSQL is excluded from bulk image updates and can only be updated through this dedicated workflow.
+              </p>
+            </div>
+            <span className='rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-xs font-medium text-red-300'>High risk</span>
+          </div>
+
+          <div className='mt-4 flex flex-col gap-4 rounded-lg border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between'>
+            <div>
+              <p className='font-mono text-sm'>multibase-db</p>
+              <p className='mt-1 text-xs text-muted-foreground'>
+                {postgresService?.image || 'Image status unavailable'}
+                {' · '}
+                {postgresService?.updateStatus === 'manual_approval_required'
+                  ? 'Manual approval required'
+                  : postgresService?.updateAvailable
+                    ? 'Update available'
+                    : 'No update available'}
+              </p>
+            </div>
+            <button
+              type='button'
+              onClick={handlePostgresUpdate}
+              disabled={
+                isAnyUpdateRunning ||
+                !postgresService?.updateAvailable ||
+                status?.securityGate.status !== 'ready'
+              }
+              className='rounded-md border border-red-500/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-200 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-40'
+              title={
+                status?.securityGate.status !== 'ready'
+                  ? 'Security gate is blocked'
+                  : !postgresService?.updateAvailable
+                    ? 'No PostgreSQL image update is available'
+                    : 'Open the manual PostgreSQL update confirmation'
+              }
+            >
+              Update PostgreSQL
+            </button>
+          </div>
+          <p className='mt-3 text-xs text-muted-foreground'>
+            The update creates a full backup first. You can restore it later from Backup &amp; Restore.
+          </p>
+        </section>
+
         {/* Info box */}
         <div className="flex items-start gap-3 p-4 rounded-lg bg-white/5 border border-white/10 text-sm text-muted-foreground">
           <Terminal className="w-4 h-4 flex-shrink-0 mt-0.5 text-brand-400" />
@@ -532,6 +704,26 @@ export default function UpdatesPage() {
           </div>
         </div>
       </main>
+
+      <UpdateConfirmationModal
+        open={confirmation !== null}
+        title={confirmation?.title || ''}
+        description={confirmation?.description || ''}
+        targets={confirmation?.targets || []}
+        warning={confirmation?.warning}
+        requiresText={confirmation?.requiresText}
+        onCancel={() => setConfirmation(null)}
+        onConfirm={startConfirmedUpdate}
+        isSubmitting={multibaseMutation.isPending || dockerMutation.isPending || postgresMutation.isPending}
+      />
+      <UpdateProgressModal
+        open={progressOpen}
+        state={liveState}
+        onClose={() => {
+          setProgressOpen(false);
+          liveState.clearLogs();
+        }}
+      />
     </div>
   );
 }

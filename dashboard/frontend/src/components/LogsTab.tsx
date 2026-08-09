@@ -14,13 +14,13 @@ export default function LogsTab({ instance }: LogsTabProps) {
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
-  const { data: fetchedLogs, refetch } = useInstanceLogs(instance.name, selectedService || undefined, 100);
+  const { data: fetchedLogs, refetch } = useInstanceLogs(instance.name, selectedService || undefined, 500);
 
   const { subscribeLogs, unsubscribeLogs, onLogs, offLogs } = useWebSocket();
 
   useEffect(() => {
     if (fetchedLogs) {
-      setLogs(fetchedLogs.logs || []);
+      setLogs((fetchedLogs.logs || []).slice(-500));
     }
   }, [fetchedLogs]);
 
@@ -30,7 +30,7 @@ export default function LogsTab({ instance }: LogsTabProps) {
 
     const handleLogData = (data: any) => {
       if (data.logs) {
-        setLogs((prev) => [...prev, ...data.logs.split('\n').filter(Boolean)]);
+        setLogs((prev) => [...prev, ...data.logs.split('\n').filter(Boolean)].slice(-500));
       }
     };
 

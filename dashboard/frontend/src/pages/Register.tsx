@@ -38,7 +38,7 @@ export default function Register() {
       const data: CaptchaData = await res.json();
       setCaptcha(data);
     } catch {
-      toast.error('Captcha konnte nicht geladen werden. Bitte Seite neu laden.');
+      toast.error('Could not load the captcha. Please reload the page.');
     } finally {
       setCaptchaLoading(false);
     }
@@ -81,11 +81,11 @@ export default function Register() {
     }
 
     if (!captcha) {
-      setError('Bitte warte, bis das Captcha geladen ist.');
+      setError('Please wait until the captcha has loaded.');
       return;
     }
     if (!captchaSolution.trim()) {
-      setError('Bitte löse das Captcha.');
+      setError('Please solve the captcha.');
       return;
     }
 
@@ -267,7 +267,7 @@ export default function Register() {
             <div className='space-y-3'>
               <label className='block text-sm font-medium text-foreground'>
                 Sicherheitsfrage
-                <span className='ml-1 text-xs text-muted-foreground'>(Bitte rechne)</span>
+                <span className='ml-1 text-xs text-muted-foreground'>(Please calculate)</span>
               </label>
 
               <div className='flex items-center gap-3'>
@@ -278,10 +278,10 @@ export default function Register() {
                   ) : captcha ? (
                     <span
                       dangerouslySetInnerHTML={{ __html: captcha.svg }}
-                      aria-label='Captcha-Aufgabe'
+                      aria-label='Captcha challenge'
                     />
                   ) : (
-                    <span className='text-xs text-muted-foreground'>Captcha nicht verfügbar</span>
+                    <span className='text-xs text-muted-foreground'>Captcha unavailable</span>
                   )}
                 </div>
 
@@ -290,7 +290,7 @@ export default function Register() {
                   type='button'
                   onClick={fetchCaptcha}
                   disabled={captchaLoading || isLoading}
-                  title='Neue Aufgabe laden'
+                  title='Load new challenge'
                   className='p-2 rounded-md border border-border bg-muted hover:bg-muted/80 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50'
                 >
                   <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin' : ''}`} />

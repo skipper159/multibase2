@@ -78,6 +78,7 @@ class SupabaseProjectGenerator:
         self.base_dir = Path(__file__).parent
         self.shared_dir = self.base_dir / "shared"
         self.shared_env = self._load_shared_env()
+        self.image_versions = self._load_image_versions()
 
         # Ask if running on localhost first
         is_localhost = input("Is this setup for localhost? (Y/N): ").strip().upper()
@@ -118,10 +119,28 @@ class SupabaseProjectGenerator:
                 if line and not line.startswith('#') and '=' in line:
                     key, value = line.split('=', 1)
                     env[key.strip()] = value.strip()
-        else:
-            print("WARNING: shared/.env.shared nicht gefunden!")
-            print("   Bitte zuerst 'python setup_shared.py init' ausfuehren.")
         return env
+
+    def _load_image_versions(self):
+        """Load approved image versions from shared/image-versions.yml if present."""
+        versions_file = self.shared_dir / "image-versions.yml"
+        versions = {}
+        if versions_file.exists():
+            try:
+                current_key = None
+                for line in versions_file.read_text(encoding='utf-8').splitlines():
+                    line_stripped = line.strip()
+                    if not line_stripped or line_stripped.startswith('#'):
+                        continue
+                    if line_stripped.startswith('tenant-') or line_stripped.startswith('shared-'):
+                        current_key = line_stripped.split(':', 1)[0].strip()
+                    elif 'tag:' in line_stripped and current_key:
+                        tag_val = line_stripped.split(':', 1)[1].strip().strip('"\'')
+                        if tag_val:
+                            versions[current_key] = tag_val
+            except Exception:
+                pass
+        return versions
 
     def run(self):
         """Create project subdirectories and write template files."""
@@ -356,6 +375,12 @@ class SupabaseProjectGenerator:
         Entfernt: db, vector, analytics, studio, meta, imgproxy, pooler, kong
         Kong wurde durch den shared multibase-nginx-gateway Container ersetzt.
         """
+        gotrue_tag = self.image_versions.get('tenant-auth', 'v2.189.0')
+        postgrest_tag = self.image_versions.get('tenant-rest', 'v14.12')
+        realtime_tag = self.image_versions.get('tenant-realtime', 'v2.102.3')
+        storage_tag = self.image_versions.get('tenant-storage', 'v1.60.4')
+        functions_tag = self.image_versions.get('tenant-functions', 'v1.74.0')
+
         self.templates["docker_compose"] = f"""
 # Multibase Cloud Version - Lightweight Tenant Stack
 # Verwendet Shared Infrastructure: DB, Studio, Analytics, Vector, imgproxy, Meta, Pooler, Nginx-Gateway
@@ -367,7 +392,7 @@ name: {self.project_name}
 services:
   auth:
     container_name: {self.project_name}-auth
-    image: supabase/gotrue:v2.170.0
+    image: supabase/gotrue:{gotrue_tag}
     restart: unless-stopped
     healthcheck:
       test:
@@ -387,8 +412,8 @@ services:
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: ${{API_EXTERNAL_URL}}
       GOTRUE_DB_DRIVER: postgres
-      # Shared PostgreSQL - Projekt-spezifische Datenbank
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${{POSTGRES_PASSWORD}}@multibase-db:5432/${{PROJECT_DB}}
+      # Shared PostgreSQL - Connection via Supavisor Pooler
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${{POSTGRES_PASSWORD}}@multibase-pooler:6543/${{PROJECT_DB}}
       GOTRUE_SITE_URL: ${{SITE_URL}}
       GOTRUE_URI_ALLOW_LIST: ${{ADDITIONAL_REDIRECT_URLS}}
       GOTRUE_DISABLE_SIGNUP: ${{DISABLE_SIGNUP}}
@@ -418,11 +443,11 @@ services:
 
   rest:
     container_name: {self.project_name}-rest
-    image: postgrest/postgrest:v12.2.8
+    image: postgrest/postgrest:{postgrest_tag}
     restart: unless-stopped
     environment:
-      # Shared PostgreSQL - Projekt-spezifische Datenbank
-      PGRST_DB_URI: postgres://authenticator:${{POSTGRES_PASSWORD}}@multibase-db:5432/${{PROJECT_DB}}
+      # Shared PostgreSQL - Connection via Supavisor Pooler
+      PGRST_DB_URI: postgres://authenticator:${{POSTGRES_PASSWORD}}@multibase-pooler:6543/${{PROJECT_DB}}
       PGRST_DB_SCHEMAS: ${{PGRST_DB_SCHEMAS}}
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${{JWT_SECRET}}
@@ -436,7 +461,7 @@ services:
 
   realtime:
     container_name: realtime-dev.{self.project_name}-realtime
-    image: supabase/realtime:v2.34.43
+    image: supabase/realtime:{realtime_tag}
     restart: unless-stopped
     healthcheck:
       test:
@@ -465,6 +490,7 @@ services:
       DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
       DB_ENC_KEY: supabaserealtime
       API_JWT_SECRET: ${{JWT_SECRET}}
+      METRICS_JWT_SECRET: ${{JWT_SECRET}}
       SECRET_KEY_BASE: ${{SECRET_KEY_BASE}}
       ERL_AFLAGS: -proto_dist inet_tcp
       DNS_NODES: "''"
@@ -478,7 +504,7 @@ services:
 
   storage:
     container_name: {self.project_name}-storage
-    image: supabase/storage-api:v1.19.3
+    image: supabase/storage-api:{storage_tag}
     restart: unless-stopped
     volumes:
       - ./volumes/storage:/var/lib/storage:z
@@ -520,7 +546,7 @@ services:
 
   functions:
     container_name: {self.project_name}-edge-functions
-    image: supabase/edge-runtime:v1.67.4
+    image: supabase/edge-runtime:{functions_tag}
     restart: unless-stopped
     volumes:
       - ./volumes/functions:/home/deno/functions:Z
@@ -615,6 +641,7 @@ ADDITIONAL_REDIRECT_URLS=
 JWT_EXPIRY=3600
 DISABLE_SIGNUP=false
 API_EXTERNAL_URL=http://localhost:{self.ports['gateway_port']}
+SUPABASE_PUBLIC_URL={'http://localhost:' + str(self.ports['gateway_port']) if self.origin == 'http://localhost' else self.origin.replace('://', '://' + self.project_name + '-api.')}
 
 ## Mailer Config
 MAILER_URLPATHS_CONFIRMATION="/auth/v1/verify"

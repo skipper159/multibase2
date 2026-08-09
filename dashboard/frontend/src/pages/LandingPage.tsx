@@ -294,7 +294,7 @@ const LandingPage = () => {
           <button
             className="sm:hidden p-2 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-lg transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Menüöffnen"
+            aria-label="Open menu"
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -451,10 +451,10 @@ const LandingPage = () => {
             {/* Header/Intro */}
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                Erleben Sie Multibase in Aktion
+                Experience Multibase in action
               </h2>
               <p className="text-muted-foreground text-sm max-w-xl mx-auto mt-2">
-                Klicken Sie sich durch die verschiedenen Bereiche des Dashboards oder sehen Sie sich den geführten Walkthrough an.
+                Explore the different areas of the dashboard or watch the guided walkthrough.
               </p>
             </div>
 
@@ -598,12 +598,12 @@ const LandingPage = () => {
                   <button
                     onClick={() => setIsPlaying(!isPlaying)}
                     className="flex items-center justify-center p-2 rounded-lg bg-white/5 border border-white/10 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors"
-                    title={isPlaying ? 'Auto-Wiedergabe pausieren' : 'Auto-Wiedergabe starten'}
+                    title={isPlaying ? 'Pause autoplay' : 'Start autoplay'}
                   >
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
                   <span className="text-xs text-muted-foreground select-none font-mono">
-                    Auto-Cycle: {isPlaying ? 'An' : 'Aus'}
+                    Auto-Cycle: {isPlaying ? 'On' : 'Off'}
                   </span>
                 </div>
               </div>

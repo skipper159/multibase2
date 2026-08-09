@@ -101,9 +101,18 @@ dotenv.config();
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 // Parse CORS origins - supports comma-separated list for multiple origins
-const CORS_ORIGIN = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-  : ['http://localhost:5173'];
+const configuredCorsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+  : ['http://localhost:5173', 'http://localhost:5174'];
+
+const isOriginAllowed = (origin: string | undefined): boolean => {
+  if (!origin) return true;
+  if (configuredCorsOrigins.includes(origin)) return true;
+  // Allow any localhost / 127.0.0.1 port in dev / local environment
+  if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
+  return false;
+};
+
 const PROJECTS_PATH = process.env.PROJECTS_PATH || path.join(process.cwd(), '../../projects');
 const DOCKER_SOCKET_PATH = process.env.DOCKER_SOCKET_PATH;
 const METRICS_INTERVAL = parseInt(process.env.METRICS_INTERVAL || '15000', 10);
@@ -117,7 +126,9 @@ const httpServer = createServer(app);
 // Initialize Socket.IO
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: CORS_ORIGIN,
+    origin: (origin, callback) => {
+      callback(null, isOriginAllowed(origin));
+    },
     methods: ['GET', 'POST'],
   },
   transports: ['websocket', 'polling'],
@@ -139,7 +150,7 @@ app.use(
         scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for Vite HMR in dev
         styleSrc: ["'self'", "'unsafe-inline'"],
         imgSrc: ["'self'", 'data:', 'blob:'],
-        connectSrc: ["'self'", ...CORS_ORIGIN, 'wss:', 'ws:'],
+        connectSrc: ["'self'", '*', 'wss:', 'ws:'],
         fontSrc: ["'self'", 'data:'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
@@ -147,7 +158,18 @@ app.use(
     },
   })
 );
-app.use(cors({ origin: CORS_ORIGIN, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS error: Origin ${origin} is not allowed.`));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
@@ -206,7 +228,7 @@ const mcpService = new McpService(
   functionService,
   storageService
 );
-const updateService = new UpdateService(dockerManager, path.resolve(__dirname, '../../..'));
+const updateService = new UpdateService(dockerManager, path.resolve(__dirname, '../../..'), PROJECTS_PATH);
 
 // Register services with Scheduler
 SchedulerService.registerUptimeService(uptimeService);
@@ -214,7 +236,7 @@ SchedulerService.registerUptimeService(uptimeService);
 // API Routes
 app.use(
   '/api/instances',
-  createInstanceRoutes(instanceManager, dockerManager, prisma, metricsCollector)
+  createInstanceRoutes(instanceManager, dockerManager, prisma, metricsCollector, updateService)
 );
 app.use('/api/metrics', createMetricsRoutes(metricsCollector, redisCache));
 app.use('/api/health', createHealthRoutes(healthMonitor, prisma, redisCache, dockerManager));
@@ -324,13 +346,18 @@ io.on('connection', socket => {
       const { instanceName, serviceName } = data;
       logger.info(`Client ${socket.id} subscribed to logs: ${instanceName}:${serviceName}`);
 
-      const containers = await dockerManager.listProjectContainers(instanceName);
-      const container = containers.find(c => {
-        const containerName = c.Names[0].replace('/', '');
-        return containerName.includes(serviceName);
-      });
+      const containers = instanceName === 'shared-infrastructure'
+        ? await dockerManager.listSharedContainers()
+        : await dockerManager.listProjectContainers(instanceName);
+      const selectedContainers = serviceName
+        ? containers.filter(c => {
+            const containerName = c.Names[0].replace('/', '');
+            const shortName = containerName.replace('multibase-', '');
+            return containerName === serviceName || shortName === serviceName || containerName.includes(serviceName);
+          })
+        : containers;
 
-      if (container) {
+      for (const container of selectedContainers) {
         dockerManager.streamContainerLogs(container.Id, chunk => {
           socket.emit('logs:data', {
             instanceName,
@@ -519,7 +546,7 @@ async function start() {
         service: 'multibase-dashboard',
       });
       logger.info(`📊 WebSocket server ready`, { service: 'multibase-dashboard' });
-      logger.info(`🔗 CORS enabled for: ${CORS_ORIGIN}`, { service: 'multibase-dashboard' });
+      logger.info(`🔗 CORS enabled for: ${configuredCorsOrigins.join(', ')}`, { service: 'multibase-dashboard' });
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

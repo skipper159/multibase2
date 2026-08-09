@@ -107,6 +107,7 @@ function AppContent() {
           <Route path='/api-docs' element={<ApiDocs />} />
           <Route path='/templates' element={<Templates />} />
           <Route path='/shared' element={<SharedInfra />} />
+          <Route path='/shared/:section' element={<SharedInfra />} />
           <Route path='/settings/mcp' element={<McpSettingsPage />} />
           <Route path='/orgs/new' element={<OrgSettings />} />
           <Route path='/orgs/:slug/members' element={<OrgMembers />} />

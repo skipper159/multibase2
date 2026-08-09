@@ -24,6 +24,8 @@ const SOCKET_UPDATE_EVENTS = [
   'update:step',
   'update:stepDone',
   'update:log',
+  'update:backup',
+  'update:serviceResult',
   'update:complete',
   'update:error',
 ] as const;
@@ -114,8 +116,14 @@ export function createUpdateRoutes(updateService: UpdateService, io: SocketIOSer
         return;
       }
 
-      const { services } = req.body as { services?: string[] };
-      const validServices = SHARED_SERVICES as readonly string[];
+      const { services, confirmSafetyGate, createBackup } = req.body as {
+        services?: string[];
+        confirmSafetyGate?: boolean;
+        createBackup?: boolean;
+      };
+      const validServices = (SHARED_SERVICES as readonly string[]).filter(
+        (service) => service !== 'multibase-db'
+      );
       const toUpdate =
         Array.isArray(services) && services.length > 0
           ? services.filter((s) => validServices.includes(s))
@@ -129,15 +137,80 @@ export function createUpdateRoutes(updateService: UpdateService, io: SocketIOSer
         return;
       }
 
+      if (Array.isArray(services) && services.includes('multibase-db')) {
+        res.status(409).json({
+          error: 'PostgreSQL image updates require separate manual approval.',
+          service: 'multibase-db',
+        });
+        return;
+      }
+
+      if (confirmSafetyGate !== true) {
+        res.status(409).json({
+          error: 'Security and maintenance approval are required before starting the image update.',
+        });
+        return;
+      }
+
       res.status(202).json({
         success: true,
         message: `Docker update started for ${toUpdate.length} service(s)`,
         services: toUpdate,
       });
 
-      updateService.performDockerUpdate(toUpdate).catch((err: Error) => {
-        logger.error('Docker update failed:', err);
+      updateService
+        .performDockerUpdate(toUpdate, {
+          confirmSafetyGate: true,
+          createBackup: createBackup !== false,
+          requestedBy: String((req as any).user?.id || 'admin'),
+        })
+        .catch((err: Error) => {
+          logger.error('Docker update failed:', err);
+        });
+    }
+  );
+
+  /**
+   * POST /api/updates/postgres
+   * Manually update the shared PostgreSQL image after explicit confirmation.
+   */
+  router.post(
+    '/postgres',
+    auditLog('POSTGRES_IMAGE_UPDATE', { includeBody: true }),
+    (req: Request, res: Response): void => {
+      if (updateService.isInProgress) {
+        res.status(423).json({ error: 'An update is already in progress' });
+        return;
+      }
+
+      const { confirmSafetyGate, confirmPostgres, createBackup } = req.body as {
+        confirmSafetyGate?: boolean;
+        confirmPostgres?: boolean;
+        createBackup?: boolean;
+      };
+      if (confirmSafetyGate !== true || confirmPostgres !== true) {
+        res.status(409).json({
+          error: 'Security approval and explicit PostgreSQL confirmation are required.',
+        });
+        return;
+      }
+
+      res.status(202).json({
+        success: true,
+        message: 'PostgreSQL image update started',
+        services: ['multibase-db'],
       });
+
+      updateService
+        .performDockerUpdate(['multibase-db'], {
+          confirmSafetyGate: true,
+          allowPostgres: true,
+          createBackup: createBackup !== false,
+          requestedBy: String((req as any).user?.id || 'admin'),
+        })
+        .catch((err: Error) => {
+          logger.error('PostgreSQL image update failed:', err);
+        });
     }
   );
 

@@ -17,12 +17,15 @@ import {
   XCircle,
   Loader2,
   Upload,
+  Download,
+  FileCode,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useInstances } from '../hooks/useInstances';
+import { useInstancesAll } from '../hooks/useInstances';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import PageHeader from '../components/PageHeader';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 interface BackupDestination {
   id: string;
@@ -45,6 +48,7 @@ interface Backup {
   type: 'full' | 'instance' | 'database';
   instanceId?: string;
   size: number;
+  path?: string;
   createdAt: string;
   user: {
     username: string;
@@ -84,7 +88,7 @@ type Tab = 'backups' | 'schedules';
 
 export default function BackupManagement() {
   const { token, user } = useAuth();
-  const { data: instances } = useInstances();
+  const { data: instances } = useInstancesAll();
   const [activeTab, setActiveTab] = useState<Tab>('backups');
   const [backups, setBackups] = useState<Backup[]>([]);
   const [schedules, setSchedules] = useState<BackupSchedule[]>([]);
@@ -95,6 +99,21 @@ export default function BackupManagement() {
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [previewData, setPreviewData] = useState<RestorePreview | null>(null);
   const [selectedDestinations, setSelectedDestinations] = useState<string[]>([]);
+  const [selectedBackupIds, setSelectedBackupIds] = useState<string[]>([]);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'warning' | 'info';
+    isLoading?: boolean;
+    onConfirm: () => Promise<void> | void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
   const [formData, setFormData] = useState({
     type: 'full' as 'full' | 'instance' | 'database',
     instanceId: '',
@@ -109,6 +128,23 @@ export default function BackupManagement() {
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+  const isAllSelected = backups.length > 0 && selectedBackupIds.length === backups.length;
+  const isSomeSelected = selectedBackupIds.length > 0 && selectedBackupIds.length < backups.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedBackupIds([]);
+    } else {
+      setSelectedBackupIds(backups.map((b) => b.id));
+    }
+  };
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedBackupIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
   const fetchBackups = async () => {
     try {
       const response = await fetch(`${API_URL}/api/backups`, {
@@ -118,6 +154,7 @@ export default function BackupManagement() {
       if (response.ok) {
         const data = await response.json();
         setBackups(data);
+        setSelectedBackupIds((prev) => prev.filter((id) => data.some((b: Backup) => b.id === id)));
         // Fetch upload statuses for all backups
         const statuses: Record<string, BackupUploadStatus[]> = {};
         await Promise.all(
@@ -216,6 +253,46 @@ export default function BackupManagement() {
     }
   };
 
+  const handleExtractSql = async (backupId: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/backups/${backupId}/extract-sql`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(data.message || 'SQL dump extracted for Migrations');
+      } else {
+        const err = await response.json();
+        toast.error(err.error || 'Failed to extract SQL dump');
+      }
+    } catch {
+      toast.error('Failed to extract SQL dump');
+    }
+  };
+
+  const handleDownloadSql = async (backupId: string, backupName: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/backups/${backupId}/download-sql`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to download SQL dump');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${backupName}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download SQL dump');
+    }
+  };
+
   const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -261,54 +338,118 @@ export default function BackupManagement() {
     }
   };
 
-  const handleRestore = async (backupId: string, instanceId?: string) => {
-    if (!window.confirm('Are you sure you want to restore this backup? This will overwrite existing data.')) {
-      return;
-    }
+  const handleRestore = (backupId: string, instanceId?: string, backupName?: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Restore Backup',
+      message: backupName
+        ? `Are you sure you want to restore backup "${backupName}"? This will overwrite existing data.`
+        : 'Are you sure you want to restore this backup? This will overwrite existing data.',
+      confirmText: 'Restore Now',
+      variant: 'warning',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          const response = await fetch(`${API_URL}/api/backups/${backupId}/restore`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: 'include',
+            body: JSON.stringify({ instanceId }),
+          });
 
-    try {
-      const response = await fetch(`${API_URL}/api/backups/${backupId}/restore`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ instanceId }),
-      });
+          if (!response.ok) {
+            throw new Error('Failed to restore backup');
+          }
 
-      if (!response.ok) {
-        throw new Error('Failed to restore backup');
-      }
-
-      toast.success('Backup restored successfully');
-      setPreviewData(null);
-    } catch (error) {
-      toast.error('Failed to restore backup');
-    }
+          toast.success('Backup restored successfully');
+          setPreviewData(null);
+        } catch (error) {
+          toast.error('Failed to restore backup');
+        } finally {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+        }
+      },
+    });
   };
 
-  const handleDelete = async (backupId: string) => {
-    if (!window.confirm('Are you sure you want to delete this backup?')) {
-      return;
-    }
+  const handleDelete = (backup: Backup) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Backup',
+      message: `Are you sure you want to delete backup "${backup.name}"? This action cannot be undone.`,
+      confirmText: 'Delete Backup',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          const response = await fetch(`${API_URL}/api/backups/${backup.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: 'include',
+          });
 
-    try {
-      const response = await fetch(`${API_URL}/api/backups/${backupId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
+          if (!response.ok) {
+            throw new Error('Failed to delete backup');
+          }
 
-      if (!response.ok) {
-        throw new Error('Failed to delete backup');
-      }
+          toast.success(`Backup "${backup.name}" deleted successfully`);
+          setSelectedBackupIds((prev) => prev.filter((id) => id !== backup.id));
+          await fetchBackups();
+        } catch (error) {
+          toast.error('Failed to delete backup');
+        } finally {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+        }
+      },
+    });
+  };
 
-      toast.success('Backup deleted successfully');
-      fetchBackups();
-    } catch (error) {
-      toast.error('Failed to delete backup');
-    }
+  const handleBulkDelete = () => {
+    if (selectedBackupIds.length === 0) return;
+    const count = selectedBackupIds.length;
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Selected Backups',
+      message: `Are you sure you want to delete ${count} selected backup${count > 1 ? 's' : ''}? This action cannot be undone.`,
+      confirmText: `Delete ${count} Backup${count > 1 ? 's' : ''}`,
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const id of selectedBackupIds) {
+          try {
+            const response = await fetch(`${API_URL}/api/backups/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+              credentials: 'include',
+            });
+            if (response.ok) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          } catch {
+            failCount++;
+          }
+        }
+
+        if (successCount > 0) {
+          toast.success(`Successfully deleted ${successCount} backup${successCount > 1 ? 's' : ''}`);
+        }
+        if (failCount > 0) {
+          toast.error(`Failed to delete ${failCount} backup${failCount > 1 ? 's' : ''}`);
+        }
+
+        setSelectedBackupIds([]);
+        await fetchBackups();
+        setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+      },
+    });
   };
 
   const handleToggleSchedule = async (scheduleId: number, enabled: boolean) => {
@@ -332,25 +473,35 @@ export default function BackupManagement() {
     }
   };
 
-  const handleDeleteSchedule = async (scheduleId: number) => {
-    if (!window.confirm('Are you sure you want to delete this schedule?')) {
-      return;
-    }
+  const handleDeleteSchedule = (scheduleId: number) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Schedule',
+      message: 'Are you sure you want to delete this backup schedule?',
+      confirmText: 'Delete Schedule',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isLoading: true }));
+        try {
+          const response = await fetch(`${API_URL}/api/schedules/${scheduleId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+            credentials: 'include',
+          });
 
-    try {
-      const response = await fetch(`${API_URL}/api/schedules/${scheduleId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        toast.success('Schedule deleted');
-        fetchSchedules();
-      }
-    } catch (error) {
-      toast.error('Failed to delete schedule');
-    }
+          if (response.ok) {
+            toast.success('Schedule deleted');
+            await fetchSchedules();
+          } else {
+            toast.error('Failed to delete schedule');
+          }
+        } catch (error) {
+          toast.error('Failed to delete schedule');
+        } finally {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false, isLoading: false }));
+        }
+      },
+    });
   };
 
   const formatBytes = (bytes: number): string => {
@@ -574,11 +725,50 @@ export default function BackupManagement() {
               </div>
             )}
 
+            {/* Bulk Selection Bar */}
+            {user?.role === 'admin' && selectedBackupIds.length > 0 && (
+              <div className='flex items-center justify-between bg-destructive/10 border border-destructive/20 rounded-lg p-3 mb-4 animate-in fade-in duration-150'>
+                <div className='flex items-center gap-2 text-sm font-medium text-destructive'>
+                  <CheckCircle className='w-4 h-4' />
+                  <span>{selectedBackupIds.length} backup(s) selected</span>
+                </div>
+                <div className='flex items-center gap-2'>
+                  <button
+                    onClick={() => setSelectedBackupIds([])}
+                    className='px-3 py-1.5 text-xs font-medium border border-border rounded-md hover:bg-muted transition-colors'
+                  >
+                    Deselect All
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    className='flex items-center gap-1.5 px-3 py-1.5 bg-destructive text-white text-xs font-medium rounded-md hover:bg-destructive/90 transition-colors'
+                  >
+                    <Trash2 className='w-3.5 h-3.5' />
+                    Delete Selected ({selectedBackupIds.length})
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Backups List */}
             <div className='bg-card border rounded-lg overflow-hidden'>
               <table className='w-full'>
                 <thead className='bg-muted'>
                   <tr>
+                    {user?.role === 'admin' && (
+                      <th className='w-10 px-4 py-3 text-left'>
+                        <input
+                          type='checkbox'
+                          checked={isAllSelected}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isSomeSelected;
+                          }}
+                          onChange={toggleSelectAll}
+                          className='rounded border-border text-primary focus:ring-primary cursor-pointer'
+                          title='Select all backups'
+                        />
+                      </th>
+                    )}
                     <th className='px-6 py-3 text-left text-sm font-medium'>Name</th>
                     <th className='px-6 py-3 text-left text-sm font-medium'>Type</th>
                     <th className='px-6 py-3 text-left text-sm font-medium'>Size</th>
@@ -591,13 +781,28 @@ export default function BackupManagement() {
                 <tbody className='divide-y'>
                   {backups.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className='px-6 py-8 text-center text-muted-foreground'>
+                      <td colSpan={user?.role === 'admin' ? 8 : 7} className='px-6 py-8 text-center text-muted-foreground'>
                         No backups found. Create your first backup to get started.
                       </td>
                     </tr>
                   ) : (
                     backups.map((backup) => (
-                      <tr key={backup.id} className='hover:bg-muted/50'>
+                      <tr
+                        key={backup.id}
+                        className={`hover:bg-muted/50 transition-colors ${
+                          selectedBackupIds.includes(backup.id) ? 'bg-primary/5' : ''
+                        }`}
+                      >
+                        {user?.role === 'admin' && (
+                          <td className='w-10 px-4 py-4'>
+                            <input
+                              type='checkbox'
+                              checked={selectedBackupIds.includes(backup.id)}
+                              onChange={() => toggleSelectOne(backup.id)}
+                              className='rounded border-border text-primary focus:ring-primary cursor-pointer'
+                            />
+                          </td>
+                        )}
                         <td className='px-6 py-4 font-medium'>{backup.name}</td>
                         <td className='px-6 py-4'>
                           <span
@@ -641,6 +846,20 @@ export default function BackupManagement() {
                         <td className='px-6 py-4'>
                           <div className='flex items-center justify-end gap-2'>
                             <button
+                              onClick={() => handleExtractSql(backup.id)}
+                              className='text-purple-600 hover:text-purple-800'
+                              title='Extract SQL dump (for Migrations)'
+                            >
+                              <FileCode className='w-4 h-4' />
+                            </button>
+                            <button
+                              onClick={() => handleDownloadSql(backup.id, backup.name)}
+                              className='text-emerald-600 hover:text-emerald-800'
+                              title='Download raw .sql file'
+                            >
+                              <Download className='w-4 h-4' />
+                            </button>
+                            <button
                               onClick={() => handlePreviewRestore(backup.id)}
                               className='text-primary hover:text-primary/80'
                               title='Preview restore'
@@ -649,7 +868,7 @@ export default function BackupManagement() {
                             </button>
                             {user?.role === 'admin' && (
                               <button
-                                onClick={() => handleRestore(backup.id, backup.instanceId)}
+                                onClick={() => handleRestore(backup.id, backup.instanceId, backup.name)}
                                 className='text-blue-600 hover:text-blue-800'
                                 title='Restore backup'
                               >
@@ -658,7 +877,7 @@ export default function BackupManagement() {
                             )}
                             {user?.role === 'admin' && (
                               <button
-                                onClick={() => handleDelete(backup.id)}
+                                onClick={() => handleDelete(backup)}
                                 className='text-red-600 hover:text-red-800'
                                 title='Delete backup'
                               >
@@ -859,6 +1078,12 @@ export default function BackupManagement() {
                 <label className='text-sm text-muted-foreground'>Size</label>
                 <p className='font-medium'>{formatBytes(previewData.size)}</p>
               </div>
+              {previewData.path && (
+                <div>
+                  <label className='text-sm text-muted-foreground'>Server location</label>
+                  <p className='break-all font-mono text-xs'>{previewData.path}</p>
+                </div>
+              )}
               <div>
                 <label className='text-sm text-muted-foreground'>Contents</label>
                 <ul className='list-disc list-inside text-sm'>
@@ -877,6 +1102,10 @@ export default function BackupManagement() {
                   </ul>
                 </div>
               )}
+              <div className='rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800'>
+                <p className='font-medium'>Restore procedure</p>
+                <p className='mt-1'>Select Restore Now below. Restoration requires an administrator and overwrites the affected current data.</p>
+              </div>
             </div>
             <div className='flex gap-3 pt-6'>
               <button
@@ -886,7 +1115,7 @@ export default function BackupManagement() {
                 Cancel
               </button>
               <button
-                onClick={() => handleRestore(previewData.id, previewData.instanceId)}
+                onClick={() => handleRestore(previewData.id, previewData.instanceId, previewData.name)}
                 className='flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90'
               >
                 Restore Now
@@ -895,6 +1124,18 @@ export default function BackupManagement() {
           </div>
         </div>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        variant={confirmModal.variant}
+        isLoading={confirmModal.isLoading}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

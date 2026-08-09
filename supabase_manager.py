@@ -22,9 +22,10 @@ import sys
 import argparse
 import subprocess
 from pathlib import Path
-import socket
-import psutil
-import time
+try:
+    import psutil
+except ImportError:
+    psutil = None
 import json
 
 # Base directory (where this script lives)
@@ -64,7 +65,9 @@ except ImportError:
 def find_used_ports():
     """Find all currently used ports."""
     used_ports = set()
-    
+    if not psutil:
+        return used_ports
+
     try:
         # Check listening ports using psutil
         for conn in psutil.net_connections(kind='inet'):
@@ -123,8 +126,12 @@ def shared_start(args):
             return 1
     
     print("Starte Shared Infrastructure...")
+    compose_args = ["docker", "compose", "-f", "docker-compose.shared.yml"]
+    if (shared_dir / "docker-compose.override.yml").exists():
+        compose_args += ["-f", "docker-compose.override.yml"]
+    compose_args += ["--env-file", ".env.shared"]
     result = subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.shared.yml", "--env-file", ".env.shared", "up", "-d"],
+        compose_args + ["up", "-d"],
         cwd=str(shared_dir)
     )
     if result.returncode == 0:
@@ -140,8 +147,12 @@ def shared_stop(args):
         return 1
     
     print("Stoppe Shared Infrastructure...")
+    compose_args = ["docker", "compose", "-f", "docker-compose.shared.yml"]
+    if (shared_dir / "docker-compose.override.yml").exists():
+        compose_args += ["-f", "docker-compose.override.yml"]
+    compose_args += ["--env-file", ".env.shared"]
     result = subprocess.run(
-        ["docker", "compose", "-f", "docker-compose.shared.yml", "--env-file", ".env.shared", "down"],
+        compose_args + ["down"],
         cwd=str(shared_dir)
     )
     if result.returncode == 0:
@@ -160,8 +171,12 @@ def shared_status(args):
     print("-" * 60)
     
     if running:
+        compose_args = ["docker", "compose", "-f", "docker-compose.shared.yml"]
+        if (shared_dir / "docker-compose.override.yml").exists():
+            compose_args += ["-f", "docker-compose.override.yml"]
+        compose_args += ["--env-file", ".env.shared"]
         result = subprocess.run(
-            ["docker", "compose", "-f", "docker-compose.shared.yml", "--env-file", ".env.shared", "ps"],
+            compose_args + ["ps"],
             cwd=str(shared_dir)
         )
         

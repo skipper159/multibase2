@@ -1,7 +1,7 @@
 /**
  * React Query hooks for the Update System.
  *
- * useUpdateStatus   — polls GET /api/updates/status (cached 5 min on server side)
+ * useUpdateStatus   — fetches GET /api/updates/status (cached 5 min on server side; no background polling)
  * useCheckUpdates   — forces a fresh check via POST /api/updates/check
  * useUpdateMultibase — triggers a Multibase self-update
  * useUpdateDocker   — triggers Docker image pulls for shared services
@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { io, Socket } from 'socket.io-client';
-import { updatesApi, UpdateStatus } from '../lib/api';
+import { updatesApi, UpdateStatus, DockerUpdateRequest } from '../lib/api';
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -64,7 +64,21 @@ export const useUpdateMultibase = () => {
 export const useUpdateDocker = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (services?: string[]) => updatesApi.updateDocker(services),
+    mutationFn: (request: DockerUpdateRequest) =>
+      updatesApi.updateDocker(request.services, {
+        confirmSafetyGate: request.confirmSafetyGate,
+        createBackup: request.createBackup,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: updateKeys.all });
+    },
+  });
+};
+
+export const useUpdatePostgres = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: updatesApi.updatePostgres,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: updateKeys.all });
     },
@@ -86,35 +100,64 @@ export interface UpdateProgress {
   total: number;
 }
 
+export interface UpdateBackupInfo {
+  id: string;
+  name: string;
+  type: string;
+  path: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface ImageUpdateResult {
+  service: string;
+  status: 'updated' | 'rolled_back' | 'rollback_failed' | 'skipped';
+  previousTag?: string;
+  targetTag?: string;
+  error?: string;
+}
+
 export interface UpdateLiveState {
   isRunning: boolean;
-  type: 'multibase' | 'docker' | null;
+  type: 'multibase' | 'docker' | 'tenantDocker' | null;
+  mode: 'update' | 'rollback' | null;
   steps: string[];
   currentStep: number;
   logs: UpdateLogEntry[];
   error: string | null;
   completed: boolean;
+  outcome: 'success' | 'partial' | 'failed' | null;
+  serviceResults: Record<string, ImageUpdateResult>;
+  backup: UpdateBackupInfo | null;
   clearLogs: () => void;
 }
 
 export const useUpdateLogs = (): UpdateLiveState => {
   const [isRunning, setIsRunning] = useState(false);
-  const [type, setType] = useState<'multibase' | 'docker' | null>(null);
+  const [type, setType] = useState<'multibase' | 'docker' | 'tenantDocker' | null>(null);
+  const [mode, setMode] = useState<'update' | 'rollback' | null>(null);
   const [steps, setSteps] = useState<string[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [logs, setLogs] = useState<UpdateLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [completed, setCompleted] = useState(false);
+  const [outcome, setOutcome] = useState<'success' | 'partial' | 'failed' | null>(null);
+  const [serviceResults, setServiceResults] = useState<Record<string, ImageUpdateResult>>({});
+  const [backup, setBackup] = useState<UpdateBackupInfo | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
   const clearLogs = useCallback(() => {
     setLogs([]);
     setError(null);
     setCompleted(false);
+    setOutcome(null);
+    setServiceResults({});
     setIsRunning(false);
     setType(null);
+    setMode(null);
     setSteps([]);
     setCurrentStep(0);
+    setBackup(null);
   }, []);
 
   useEffect(() => {
@@ -124,14 +167,18 @@ export const useUpdateLogs = (): UpdateLiveState => {
     });
     socketRef.current = socket;
 
-    socket.on('update:start', (data: { type: 'multibase' | 'docker'; steps?: string[]; services?: string[] }) => {
+    socket.on('update:start', (data: { type: 'multibase' | 'docker' | 'tenantDocker'; mode?: 'update' | 'rollback'; steps?: string[]; services?: string[] }) => {
       setIsRunning(true);
       setCompleted(false);
+      setOutcome(null);
+      setServiceResults({});
       setError(null);
       setType(data.type);
+      setMode(data.mode ?? 'update');
       setSteps(data.steps || data.services || []);
       setCurrentStep(0);
       setLogs([]);
+      setBackup(null);
     });
 
     socket.on('update:step', (data: UpdateProgress) => {
@@ -142,9 +189,24 @@ export const useUpdateLogs = (): UpdateLiveState => {
       setLogs((prev) => [...prev, { line: data.line, ts: Date.now() }]);
     });
 
-    socket.on('update:complete', () => {
+    socket.on('update:backup', (data: UpdateBackupInfo) => {
+      setBackup(data);
+    });
+
+    socket.on('update:serviceResult', (data: ImageUpdateResult) => {
+      setServiceResults((previous) => ({ ...previous, [data.service]: data }));
+    });
+
+    socket.on('update:complete', (data?: {
+      outcome?: 'success' | 'partial' | 'failed';
+      results?: ImageUpdateResult[];
+    }) => {
       setIsRunning(false);
       setCompleted(true);
+      setOutcome(data?.outcome ?? 'success');
+      if (data?.results) {
+        setServiceResults(Object.fromEntries(data.results.map((result) => [result.service, result])));
+      }
     });
 
     socket.on('update:error', (data: { error: string }) => {
@@ -158,5 +220,8 @@ export const useUpdateLogs = (): UpdateLiveState => {
     };
   }, []);
 
-  return { isRunning, type, steps, currentStep, logs, error, completed, clearLogs };
+  return {
+    isRunning, type, mode, steps, currentStep, logs, error, completed, outcome,
+    serviceResults, backup, clearLogs,
+  };
 };

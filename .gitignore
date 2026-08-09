@@ -15,6 +15,7 @@ projects/
 # not secrets, generated configs or runtime volumes
 shared/*
 !shared/docker-compose.shared.yml
+!shared/image-versions.yml
 !shared/*.example
 !shared/config/
 !shared/config/vector.yml

@@ -19,9 +19,11 @@ import { logger } from '../utils/logger';
 import { parseEnvFile } from '../utils/envParser';
 import { generateAndWriteTenantConfig, reloadNginxGateway } from './NginxGatewayGenerator';
 import DockerManager from './DockerManager';
+import { loadImageMatrix } from './ImageRegistryService';
+import prisma from '../lib/prisma';
 
 const execAsync = promisify(exec);
-const STUDIO_IMAGE = process.env.STUDIO_IMAGE || 'supabase/studio:latest';
+const STUDIO_IMAGE_FALLBACK = 'supabase/studio:latest';
 const TENANT_STUDIO_IDLE_MS = Math.max(
   60_000,
   parseInt(process.env.TENANT_STUDIO_IDLE_MS || '600000', 10)
@@ -47,6 +49,19 @@ export class StudioManager {
   private cleanupTimer: NodeJS.Timeout;
   private switching = false;
 
+  private getManagedImage(matrixName: string, fallback: string): string {
+    const override = matrixName === 'tenant-studio' ? process.env.STUDIO_IMAGE : undefined;
+    if (override) return override;
+    try {
+      const matrix = loadImageMatrix(path.join(this.sharedDir, 'image-versions.yml'));
+      const definition = matrix.images[matrixName];
+      return definition ? `${definition.repository}:${definition.tag}` : fallback;
+    } catch (error) {
+      logger.warn(`Image matrix unavailable for ${matrixName}: ${error instanceof Error ? error.message : String(error)}`);
+      return fallback;
+    }
+  }
+
   constructor(projectsDir: string, dockerManager: DockerManager) {
     this.projectsDir = path.resolve(projectsDir);
     this.sharedDir = path.resolve(projectsDir, '..', 'shared');
@@ -59,6 +74,37 @@ export class StudioManager {
     }, TENANT_STUDIO_CLEANUP_INTERVAL_MS);
 
     this.cleanupTimer.unref();
+
+    // Recover or cleanup orphaned studio containers from previous backend process
+    this.recoverOrphanedStudiosOnStart().catch((error) => {
+      logger.warn('Startup orphaned studio recovery failed:', error);
+    });
+  }
+
+  private async recoverOrphanedStudiosOnStart(): Promise<void> {
+    try {
+      const activeLeases = await prisma.studioLease.findMany({
+        where: { status: 'active' },
+      });
+
+      for (const lease of activeLeases) {
+        const lastAccess = lease.lastAccessAt.getTime();
+        if (Date.now() - lastAccess >= TENANT_STUDIO_IDLE_MS) {
+          logger.info(`Cleaning up orphaned Studio container for tenant "${lease.tenantName}" on startup...`);
+          await this.removeContainerIfExists(`multibase-studio-${lease.tenantName}`);
+          await this.removeContainerIfExists(`multibase-meta-${lease.tenantName}`);
+          await prisma.studioLease.update({
+            where: { id: lease.id },
+            data: { status: 'stopped' },
+          });
+        } else {
+          this.tenantLastAccess.set(lease.tenantName, lastAccess);
+          this.tenantStudioPorts.set(lease.tenantName, lease.studioPort);
+        }
+      }
+    } catch (error) {
+      logger.warn('Failed to query StudioLeases from DB on start:', error);
+    }
   }
 
   /**
@@ -125,7 +171,7 @@ export class StudioManager {
         activatedAt: new Date(),
       };
       this.tenantStudioPorts.set(tenantName, studioPort);
-      this.markTenantAccess(tenantName);
+      this.markTenantAccess(tenantName, studioPort);
 
       const elapsed = Date.now() - startTime;
       logger.info(
@@ -173,8 +219,18 @@ export class StudioManager {
     }
   }
 
-  private markTenantAccess(tenantName: string): void {
-    this.tenantLastAccess.set(tenantName, Date.now());
+  private markTenantAccess(tenantName: string, studioPort?: number): void {
+    const now = Date.now();
+    this.tenantLastAccess.set(tenantName, now);
+    const portToSave = studioPort || this.tenantStudioPorts.get(tenantName) || 3100;
+
+    prisma.studioLease
+      .upsert({
+        where: { tenantName },
+        update: { lastAccessAt: new Date(now), status: 'active', studioPort: portToSave },
+        create: { tenantName, studioPort: portToSave, status: 'active' },
+      })
+      .catch((err) => logger.warn(`Failed to update StudioLease for ${tenantName}:`, err));
   }
 
   private async cleanupIdleTenantStudios(): Promise<void> {
@@ -202,6 +258,13 @@ export class StudioManager {
       if (this.activeTenant?.name === tenantName) {
         this.activeTenant = null;
       }
+
+      await prisma.studioLease
+        .updateMany({
+          where: { tenantName },
+          data: { status: 'stopped' },
+        })
+        .catch(() => {});
     }
   }
 
@@ -217,6 +280,14 @@ export class StudioManager {
       sharedEnv['SHARED_POSTGRES_PASSWORD'] || tenantEnv['POSTGRES_PASSWORD'] || '';
     const logflareApiKey =
       sharedEnv['SHARED_LOGFLARE_API_KEY'] || sharedEnv['LOGFLARE_API_KEY'] || '';
+    let pgMetaCryptoKey =
+      sharedEnv['SHARED_PG_META_CRYPTO_KEY'] ||
+      sharedEnv['SHARED_VAULT_ENC_KEY'] ||
+      sharedEnv['SHARED_SECRET_KEY_BASE'] ||
+      'kYw1qwErxTfl1mcnq4YUvwrLsQr3whBa';
+    if (pgMetaCryptoKey.length > 32) {
+      pgMetaCryptoKey = pgMetaCryptoKey.slice(0, 32);
+    }
     const openaiApiKey =
       tenantEnv['OPENAI_API_KEY'] || sharedEnv['OPENAI_API_KEY'] || process.env.OPENAI_API_KEY || '';
     const studioOrg = sharedEnv['SHARED_STUDIO_ORG'] || 'Multibase';
@@ -224,13 +295,15 @@ export class StudioManager {
     const tenantFunctionsHostPath = path
       .join(this.projectsDir, tenantName, 'volumes', 'functions')
       .replace(/\\/g, '/');
-
     const tenantSnippetsHostPath = path
       .join(this.projectsDir, tenantName, 'volumes', 'snippets')
       .replace(/\\/g, '/');
     fs.mkdirSync(tenantSnippetsHostPath, { recursive: true });
+
     const metaContainer = `multibase-meta-${tenantName}`;
     const studioContainer = `multibase-studio-${tenantName}`;
+    const studioImage = this.getManagedImage('tenant-studio', STUDIO_IMAGE_FALLBACK);
+    const metaImage = this.getManagedImage('tenant-meta', 'supabase/postgres-meta:v0.95.2');
 
     const existingPort = this.tenantStudioPorts.get(tenantName);
     const reservedPorts = new Set(this.tenantStudioPorts.values());
@@ -251,21 +324,29 @@ export class StudioManager {
       '-e PG_META_DB_USER=supabase_admin',
       `-e "PG_META_DB_PASSWORD=${pgPassword}"`,
       `-e "PG_META_DB_URL=postgresql://supabase_admin:${pgPassword}@multibase-db:5432/${projectDb}"`,
-      'supabase/postgres-meta:v0.87.1',
+      `-e "PG_META_CRYPTO_KEY=${pgMetaCryptoKey}"`,
+      `-e "CRYPTO_KEY=${pgMetaCryptoKey}"`,
+      metaImage,
     ].join(' ');
 
     await execAsync(metaCmd, { timeout: 20000 });
     await this.waitForContainer(metaContainer, 15000);
+
+    const gatewayPort = tenantEnv['GATEWAY_PORT'] || tenantEnv['KONG_HTTP_PORT'] || '8000';
+    const rawPublicUrl = tenantEnv['SUPABASE_PUBLIC_URL'] || tenantEnv['API_EXTERNAL_URL'] || '';
+    const publicUrl =
+      rawPublicUrl && !rawPublicUrl.includes('.localhost')
+        ? rawPublicUrl
+        : `http://localhost:${gatewayPort}`;
 
     const studioCmd = [
       'docker run -d',
       `--name ${studioContainer}`,
       '--network multibase-shared',
       '--restart unless-stopped',
-      `-p ${studioPort}:3000`,
-      '-v /var/run/docker.sock:/var/run/docker.sock:ro',
-      `-v "${tenantSnippetsHostPath}:/home/studio/snippets"`,
+      `-p 127.0.0.1:${studioPort}:3000`,
       `-v "${tenantFunctionsHostPath}:/home/studio/functions"`,
+      `-v "${tenantSnippetsHostPath}:/home/studio/snippets"`,
       `-e STUDIO_PG_META_URL=http://${metaContainer}:8080`,
       `-e STORAGE_URL=http://${tenantName}-storage:5000`,
       `-e "POSTGRES_PASSWORD=${pgPassword}"`,
@@ -274,10 +355,11 @@ export class StudioManager {
       `-e "POSTGRES_DB=${projectDb}"`,
       `-e "DEFAULT_ORGANIZATION_NAME=${studioOrg}"`,
       `-e "DEFAULT_PROJECT_NAME=${studioProject}"`,
-      `-e SUPABASE_URL=http://multibase-nginx-gateway:${tenantEnv['GATEWAY_PORT'] || tenantEnv['KONG_HTTP_PORT'] || '8000'}`,
-      `-e SUPABASE_PUBLIC_URL=${tenantEnv['SUPABASE_PUBLIC_URL'] || tenantEnv['API_EXTERNAL_URL'] || `http://localhost:${tenantEnv['GATEWAY_PORT'] || tenantEnv['KONG_HTTP_PORT'] || '8000'}`}`,
+      `-e SUPABASE_URL=http://multibase-nginx-gateway:${gatewayPort}`,
+      `-e SUPABASE_PUBLIC_URL=${publicUrl}`,
       `-e "SUPABASE_ANON_KEY=${tenantEnv['ANON_KEY'] || ''}"`,
       `-e "SUPABASE_SERVICE_KEY=${tenantEnv['SERVICE_ROLE_KEY'] || ''}"`,
+      `-e "PG_META_CRYPTO_KEY=${pgMetaCryptoKey}"`,
       `-e "AUTH_JWT_SECRET=${tenantEnv['JWT_SECRET'] || ''}"`,
       `-e "LOGFLARE_API_KEY=${logflareApiKey}"`,
       '-e LOGFLARE_URL=http://multibase-analytics:4000',
@@ -285,9 +367,8 @@ export class StudioManager {
       '-e NEXT_ANALYTICS_BACKEND_PROVIDER=postgres',
       '-e EDGE_FUNCTIONS_MANAGEMENT_FOLDER=/home/studio/functions',
       '-e SNIPPETS_MANAGEMENT_FOLDER=/home/studio/snippets',
-      '-e DOCKER_SOCKET_LOCATION=/var/run/docker.sock',
       ...(openaiApiKey ? [`-e "OPENAI_API_KEY=${openaiApiKey}"`] : []),
-      STUDIO_IMAGE,
+      studioImage,
     ].join(' ');
 
     await execAsync(studioCmd, { timeout: 25000 });
@@ -417,7 +498,7 @@ export class StudioManager {
         `-e "PG_META_DB_NAME=${projectDb}"`,
         `-e PG_META_DB_USER=supabase_admin`,
         `-e "PG_META_DB_PASSWORD=${pgPassword}"`,
-        `supabase/postgres-meta:v0.87.1`,
+        this.getManagedImage('tenant-meta', 'supabase/postgres-meta:v0.95.2'),
       ].join(' ');
 
       await execAsync(createCmd, { timeout: 15000 });

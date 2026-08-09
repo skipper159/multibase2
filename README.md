@@ -123,7 +123,7 @@ cp shared/.env.shared.example shared/.env.shared
 nano shared/.env.shared  # at minimum change passwords and JWT secret
 
 # Start the shared infrastructure
-docker compose -f shared/docker-compose.shared.yml up -d
+docker compose -f shared/docker-compose.shared.yml -f shared/docker-compose.override.yml --env-file shared/.env.shared up -d
 ```
 
 ### 2. Configure & Start Backend

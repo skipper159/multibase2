@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-Feature_Roadmap}"
 case "${REPO_BRANCH}" in
-  "Feature_Roadmap") SCRIPT_VERSION="3.0.0" ;;
+  "Feature_Roadmap") SCRIPT_VERSION="3.1.1" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -998,6 +998,11 @@ ALERT_CHECK_INTERVAL=60000
 
 # Session
 SESSION_SECRET=${session_secret}
+
+# Update Security Gate
+# Image updates stay blocked until an operator explicitly approves the
+# reviewed image matrix in the environment.
+IMAGE_UPDATE_SECURITY_GATE=${IMAGE_UPDATE_SECURITY_GATE:-blocked}
 
 # Initial admin credentials (used by backend on first start if no admin exists)
 DEFAULT_ADMIN_USERNAME=${ADMIN_USER}

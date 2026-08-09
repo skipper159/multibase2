@@ -44,6 +44,15 @@ export function createBackupRoutes() {
           destinationIds: Array.isArray(destinationIds) ? destinationIds : undefined,
         });
 
+        res.locals.auditResource = backup.name;
+        res.locals.auditDetails = {
+          backupId: backup.id,
+          backupName: backup.name,
+          backupType: backup.type,
+          instanceId: backup.instanceId,
+          size: backup.size,
+        };
+
         res.json(backup);
       } catch (error) {
         logger.error('Error in create backup route:', error);
@@ -133,6 +142,13 @@ export function createBackupRoutes() {
         const backup = await BackupService.getBackup(req.params.id);
         if (!backup) return res.status(404).json({ error: 'Backup not found' });
 
+        res.locals.auditResource = backup.name;
+        res.locals.auditDetails = {
+          backupId: backup.id,
+          backupName: backup.name,
+          backupType: backup.type,
+        };
+
         const { destinationIds } = req.body;
         if (!Array.isArray(destinationIds) || destinationIds.length === 0) {
           return res.status(400).json({ error: 'destinationIds array is required' });
@@ -205,7 +221,6 @@ export function createBackupRoutes() {
     requireAdmin,
     requireScope(SCOPES.BACKUPS.RESTORE),
     auditLog('BACKUP_RESTORE', {
-      getResource: (req) => req.params.id,
       includeBody: true,
     }),
     async (req: Request, res: Response): Promise<any> => {
@@ -218,6 +233,17 @@ export function createBackupRoutes() {
         }
 
         const { instanceId } = req.body;
+
+        const backup = await BackupService.getBackup(req.params.id);
+        const backupName = backup?.name || req.params.id;
+
+        res.locals.auditResource = backupName;
+        res.locals.auditDetails = {
+          backupId: req.params.id,
+          backupName,
+          backupType: backup?.type,
+          instanceId: instanceId || backup?.instanceId,
+        };
 
         const result = await BackupService.restoreBackup({
           backupId: req.params.id,
@@ -252,6 +278,17 @@ export function createBackupRoutes() {
           return res.status(403).json({ error: 'Only admins can delete backups' });
         }
 
+        const backup = await BackupService.getBackup(req.params.id);
+        const backupName = backup?.name || req.params.id;
+
+        res.locals.auditResource = backupName;
+        res.locals.auditDetails = {
+          backupId: req.params.id,
+          backupName,
+          backupType: backup?.type,
+          instanceId: backup?.instanceId,
+        };
+
         await BackupService.deleteBackup(req.params.id);
 
         res.json({ message: 'Backup deleted successfully' });
@@ -263,6 +300,40 @@ export function createBackupRoutes() {
       }
     }
   );
+
+  /**
+   * POST /api/backups/:id/extract-sql
+   * Extract SQL dump file from backup ZIP into BACKUP_DIR for use in Migrations
+   */
+  router.post('/:id/extract-sql', requireViewer, requireScope(SCOPES.BACKUPS.READ), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const result = await BackupService.extractSqlFromZip(req.params.id);
+      res.json({
+        message: `Extracted SQL dump to ${result.filename}`,
+        filename: result.filename,
+        size: result.size,
+      });
+    } catch (error) {
+      logger.error('Error extracting SQL dump from ZIP:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to extract SQL dump' });
+    }
+  });
+
+  /**
+   * GET /api/backups/:id/download-sql
+   * Download the SQL dump file directly from the backup ZIP
+   */
+  router.get('/:id/download-sql', requireViewer, requireScope(SCOPES.BACKUPS.READ), async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { filename, content } = await BackupService.getSqlDumpFromZipStream(req.params.id);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(content);
+    } catch (error) {
+      logger.error('Error downloading SQL dump from ZIP:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to download SQL dump' });
+    }
+  });
 
   return router;
 }

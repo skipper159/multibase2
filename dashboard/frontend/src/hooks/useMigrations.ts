@@ -97,3 +97,70 @@ export function useValidateSql() {
     },
   });
 }
+
+export function useSqlDumps() {
+  return useQuery({
+    queryKey: ['migrations', 'dumps'],
+    queryFn: migrationsApi.listDumps,
+    staleTime: 1000 * 10,
+  });
+}
+
+export function useDeleteSqlDump() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: migrationsApi.deleteDump,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['migrations', 'dumps'] });
+      toast.success('SQL dump deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to delete SQL dump');
+    },
+  });
+}
+
+export function useBulkDeleteSqlDumps() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: migrationsApi.bulkDeleteDumps,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['migrations', 'dumps'] });
+      toast.success(`Deleted ${data.deleted} SQL dump(s)`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to delete SQL dumps');
+    },
+  });
+}
+
+export function useUploadSqlDump() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ filename, content }: { filename: string; content: string }) =>
+      migrationsApi.uploadDump(filename, content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['migrations', 'dumps'] });
+      toast.success('SQL dump uploaded successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to upload SQL dump');
+    },
+  });
+}
+
+export function useApplySqlDump() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ filename, instanceId }: { filename: string; instanceId: string }) =>
+      migrationsApi.applyDump(filename, instanceId),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['instances'] });
+      toast.success(`Applied SQL dump ${variables.filename} to ${variables.instanceId}`);
+    },
+    onError: (error: any) => {
+      toast.error(error.message || 'Failed to apply SQL dump');
+    },
+  });
+}
+

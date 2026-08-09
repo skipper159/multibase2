@@ -96,6 +96,7 @@ class SharedInfraManager:
         postgres_password = generate_random_string(32)
         jwt_secret = generate_random_string(48)
         secret_key_base = generate_random_string(64)
+        pg_meta_crypto_key = generate_random_string(64)
         vault_enc_key = generate_random_string(32)
         logflare_key = generate_random_string(32)
         dashboard_password = generate_random_string(24)
@@ -123,6 +124,7 @@ SHARED_JWT_EXPIRY=3600
 ############
 SHARED_ANON_KEY={anon_key}
 SHARED_SERVICE_ROLE_KEY={service_role_key}
+SHARED_PG_META_CRYPTO_KEY={pg_meta_crypto_key}
 SHARED_SECRET_KEY_BASE={secret_key_base}
 SHARED_VAULT_ENC_KEY={vault_enc_key}
 
@@ -136,10 +138,18 @@ SHARED_DASHBOARD_PASSWORD={dashboard_password}
 # Shared Studio
 ############
 SHARED_STUDIO_PORT=3000
-SHARED_STUDIO_IMAGE=supabase/studio:latest
+SHARED_DB_IMAGE=supabase/postgres:15.8.1.085
+SHARED_STUDIO_IMAGE=supabase/studio:2026.08.03-sha-022b374
 SHARED_STUDIO_ORG=Multibase
 SHARED_STUDIO_PROJECT=default
 SHARED_PUBLIC_URL=http://localhost:8000
+
+SHARED_ANALYTICS_IMAGE=supabase/logflare:1.43.1
+SHARED_VECTOR_IMAGE=timberio/vector:0.53.0-alpine
+SHARED_META_IMAGE=supabase/postgres-meta:v0.96.6
+SHARED_IMGPROXY_IMAGE=darthsim/imgproxy:v3.30.1
+SHARED_POOLER_IMAGE=supabase/supavisor:2.9.5
+SHARED_NGINX_GATEWAY_IMAGE=nginx:1.29.1-alpine
 
 ############
 # Shared Nginx Gateway
@@ -190,12 +200,7 @@ DOCKER_SOCKET_LOCATION=/var/run/docker.sock
     def start(self):
         """Start the shared infrastructure stack."""
         print("🚀 Starte Shared Infrastructure...")
-        cmd = [
-            "docker", "compose",
-            "-f", str(self.compose_file),
-            "--env-file", str(self.env_file),
-            "up", "-d"
-        ]
+        cmd = self._compose_args() + ["up", "-d"]
         result = subprocess.run(cmd, cwd=str(self.shared_dir))
         if result.returncode == 0:
             self.ensure_postgres_auth_users_compat()
@@ -305,24 +310,25 @@ END $$;
     def stop(self):
         """Stop the shared infrastructure stack."""
         print("⏹️  Stoppe Shared Infrastructure...")
-        cmd = [
-            "docker", "compose",
-            "-f", str(self.compose_file),
-            "--env-file", str(self.env_file),
-            "down"
-        ]
+        cmd = self._compose_args() + ["down"]
         result = subprocess.run(cmd, cwd=str(self.shared_dir))
         return result.returncode
     
     def status(self):
         """Show status of shared infrastructure."""
-        cmd = [
-            "docker", "compose",
-            "-f", str(self.compose_file),
-            "--env-file", str(self.env_file),
+        cmd = self._compose_args() + [
             "ps", "--format", "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
         ]
         subprocess.run(cmd, cwd=str(self.shared_dir))
+
+    def _compose_args(self):
+        """Return Compose arguments including the generated tenant override."""
+        args = ["docker", "compose", "-f", str(self.compose_file)]
+        override_file = self.shared_dir / "docker-compose.override.yml"
+        if override_file.exists():
+            args.extend(["-f", str(override_file)])
+        args.extend(["--env-file", str(self.env_file)])
+        return args
 
     def add_tenant_port(self, gateway_port: int) -> bool:
         """Register a new tenant gateway port in .env.shared and regenerate
@@ -353,12 +359,7 @@ END $$;
         self._write_compose_override(all_ports)
 
         # Apply new port mapping – recreates only nginx-gateway
-        override_file = self.shared_dir / 'docker-compose.override.yml'
-        cmd = [
-            'docker', 'compose',
-            '-f', str(self.compose_file),
-            '-f', str(override_file),
-            '--env-file', str(self.env_file),
+        cmd = self._compose_args() + [
             'up', '-d', '--no-deps', 'nginx-gateway'
         ]
         result = subprocess.run(cmd, cwd=str(self.shared_dir),

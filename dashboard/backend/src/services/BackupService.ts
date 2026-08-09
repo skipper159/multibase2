@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma';
 import { promises as fs } from 'fs';
-import { exec } from 'child_process';
+import { createReadStream } from 'fs';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import archiver from 'archiver';
@@ -11,10 +12,12 @@ import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, Del
 import { Readable } from 'stream';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface BackupOptions {
   type: 'full' | 'instance' | 'database';
   instanceId?: string;
+  instanceName?: string;
   name?: string;
   createdBy: string;
   destinationIds?: string[];
@@ -23,6 +26,11 @@ export interface BackupOptions {
 export interface RestoreOptions {
   backupId: string;
   instanceId?: string;
+}
+
+export interface PostgresBackupOptions {
+  name: string;
+  createdBy: string;
 }
 
 export class BackupService {
@@ -48,6 +56,7 @@ export class BackupService {
    * Create a backup
    */
   async createBackup(options: BackupOptions) {
+    let tempFilesToCleanup: string[] = [];
     try {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const backupName = options.name || `backup-${options.type}-${timestamp}`;
@@ -67,7 +76,9 @@ export class BackupService {
             throw new Error('Instance ID required for instance backup');
           }
           // Backup specific instance
-          filesToBackup = await this.getInstanceBackupFiles(options.instanceId);
+          filesToBackup = await this.getInstanceBackupFiles(options.instanceName || options.instanceId);
+          // Identify temporary sql / temp dirs created for this backup
+          tempFilesToCleanup = filesToBackup.filter((f) => f.endsWith('.sql') || f.includes('-s3-storage-'));
           break;
 
         case 'database':
@@ -115,6 +126,60 @@ export class BackupService {
     } catch (error) {
       logger.error('Error creating backup:', error);
       throw error;
+    } finally {
+      // Clean up temporary sql dump and temp dirs created specifically for this ZIP backup
+      for (const tempPath of tempFilesToCleanup) {
+        try {
+          const stat = await fs.stat(tempPath).catch(() => null);
+          if (stat) {
+            if (stat.isDirectory()) {
+              await fs.rm(tempPath, { recursive: true, force: true });
+            } else {
+              await fs.unlink(tempPath);
+            }
+            logger.info(`Cleaned up temp backup file: ${tempPath}`);
+          }
+        } catch (err) {
+          logger.warn(`Failed to clean up temp file ${tempPath}: ${err}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Create a real SQL dump of the shared Supabase PostgreSQL container.
+   * This is intentionally separate from the Multibase metadata database backup.
+   */
+  async createPostgresBackup(options: PostgresBackupOptions) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupName = options.name || `postgres-backup-${timestamp}`;
+    const tempDir = path.join(this.BACKUP_DIR, `.postgresql-${timestamp}`);
+    const sqlPath = path.join(tempDir, 'postgresql-dump.sql');
+    const backupPath = path.join(this.BACKUP_DIR, `${backupName}.zip`);
+
+    try {
+      await fs.mkdir(tempDir, { recursive: true });
+      const { stdout } = await execFileAsync(
+        'docker',
+        ['exec', 'multibase-db', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists', '--no-role-passwords'],
+        { maxBuffer: 500 * 1024 * 1024 }
+      );
+      await fs.writeFile(sqlPath, stdout, 'utf8');
+      await this.createZipArchive([sqlPath], backupPath);
+      const stats = await fs.stat(backupPath);
+      const backup = await prisma.backup.create({
+        data: {
+          name: backupName,
+          type: 'database',
+          size: stats.size,
+          path: backupPath,
+          createdBy: options.createdBy,
+        },
+      });
+      logger.info(`PostgreSQL backup created: ${backupName} (${this.formatBytes(stats.size)})`);
+      return backup;
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -239,7 +304,13 @@ export class BackupService {
           if (!options.instanceId) {
             throw new Error('Instance ID required for instance restore');
           }
-          await this.restoreInstanceBackup(extractPath, options.instanceId);
+          {
+            const instance = await prisma.instance.findUnique({
+              where: { id: backup.instanceId || options.instanceId },
+              select: { name: true },
+            });
+            await this.restoreInstanceBackup(extractPath, options.instanceId, instance?.name || options.instanceId);
+          }
           break;
 
         case 'database':
@@ -605,8 +676,8 @@ export class BackupService {
   /**
    * Restore instance backup (cloud-aware, with S3 storage restore and container restart)
    */
-  private async restoreInstanceBackup(extractPath: string, instanceId: string): Promise<void> {
-    const projectsDest = path.join(process.cwd(), '../../projects', instanceId);
+  private async restoreInstanceBackup(extractPath: string, instanceId: string, instanceName: string): Promise<void> {
+    const projectsDest = path.join(process.cwd(), '../../projects', instanceName);
     const extractedDirs = await fs.readdir(extractPath);
 
     // Check for any .sql file (cloud or classic DB dump)
@@ -615,10 +686,10 @@ export class BackupService {
       const sqlPath = path.join(extractPath, sqlDump);
       if (sqlDump.includes('-classic-db-')) {
         // Classic instance: restore into dedicated DB container
-        await this.restoreClassicInstanceDb(instanceId, sqlPath);
+        await this.restoreClassicInstanceDb(instanceName, sqlPath);
       } else {
         // Cloud tenant: restore into shared cluster
-        await this.restoreCloudTenantDb(instanceId, sqlPath);
+        await this.restoreCloudTenantDb(instanceName, sqlPath);
       }
     }
 
@@ -638,7 +709,7 @@ export class BackupService {
       const envPath = path.join(projectsDest, '.env');
       try {
         const envConfig = parseEnvFile(envPath);
-        await this.restoreS3Storage(instanceId, path.join(extractPath, s3BackupDir), envConfig);
+        await this.restoreS3Storage(instanceName, path.join(extractPath, s3BackupDir), envConfig);
       } catch (err) {
         logger.warn(`Could not restore S3 storage for ${instanceId}: ${err}`);
       }
@@ -648,13 +719,13 @@ export class BackupService {
     const composeFile = path.join(projectsDest, 'docker-compose.yml');
     try {
       if (await fs.stat(composeFile).catch(() => null)) {
-        logger.info(`Restarting containers for ${instanceId} after restore...`);
+        logger.info(`Restarting containers for ${instanceName} after restore...`);
         await execAsync('docker compose stop', { cwd: projectsDest });
         await execAsync('docker compose up -d', { cwd: projectsDest });
         logger.info(`Containers restarted for ${instanceId}`);
       }
     } catch (err) {
-      logger.warn(`Could not restart containers for ${instanceId} after restore (non-fatal): ${err}`);
+        logger.warn(`Could not restart containers for ${instanceName} after restore (non-fatal): ${err}`);
     }
   }
 
@@ -662,9 +733,34 @@ export class BackupService {
    * Restore database backup
    */
   private async restoreDatabaseBackup(extractPath: string): Promise<void> {
+    const postgresDumpPath = path.join(extractPath, 'postgresql-dump.sql');
+    if (await fs.stat(postgresDumpPath).catch(() => null)) {
+      await this.restoreSharedPostgresDump(postgresDumpPath);
+      return;
+    }
     const dbSrc = path.join(extractPath, 'multibase.db');
     const dbDest = path.join(process.cwd(), 'prisma/data/multibase.db');
     await fs.copyFile(dbSrc, dbDest);
+  }
+
+  private async restoreSharedPostgresDump(sqlPath: string): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(
+        'docker',
+        ['exec', '-i', 'multibase-db', 'psql', '-U', 'postgres', '-d', 'postgres'],
+        { stdio: ['pipe', 'pipe', 'pipe'] }
+      );
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.trim() || `PostgreSQL restore exited with code ${code}`));
+      });
+      createReadStream(sqlPath).on('error', reject).pipe(child.stdin);
+    });
   }
 
   /**
@@ -695,6 +791,218 @@ export class BackupService {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  }
+
+  /**
+   * List all standalone .sql dump files in the BACKUP_DIR
+   */
+  async listSqlDumps(): Promise<Array<{
+    filename: string;
+    size: number;
+    createdAt: Date;
+    suggestedInstance?: string;
+  }>> {
+    try {
+      await this.ensureBackupDir();
+      const files = await fs.readdir(this.BACKUP_DIR);
+      const sqlFiles = files.filter((f) => f.endsWith('.sql'));
+
+      const result = [];
+      for (const filename of sqlFiles) {
+        const filePath = path.join(this.BACKUP_DIR, filename);
+        const stats = await fs.stat(filePath).catch(() => null);
+        if (!stats) continue;
+
+        let suggestedInstance: string | undefined;
+        if (filename.includes('-db-')) {
+          suggestedInstance = filename.split('-db-')[0];
+        } else if (filename.includes('-classic-db-')) {
+          suggestedInstance = filename.split('-classic-db-')[0];
+        }
+
+        result.push({
+          filename,
+          size: stats.size,
+          createdAt: stats.mtime,
+          suggestedInstance,
+        });
+      }
+
+      return result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    } catch (error) {
+      logger.error('Error listing SQL dumps:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Read SQL dump file content
+   */
+  async readSqlDump(filename: string, maxBytes: number = 2 * 1024 * 1024): Promise<{ filename: string; content: string; truncated: boolean }> {
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(this.BACKUP_DIR, safeFilename);
+
+    if (!(await fs.stat(filePath).catch(() => null))) {
+      throw new Error(`SQL dump ${safeFilename} not found`);
+    }
+
+    const stats = await fs.stat(filePath);
+    const stream = require('fs').createReadStream(filePath, { start: 0, end: maxBytes - 1 });
+    let content = '';
+
+    for await (const chunk of stream) {
+      content += chunk.toString('utf-8');
+    }
+
+    return {
+      filename: safeFilename,
+      content,
+      truncated: stats.size > maxBytes,
+    };
+  }
+
+  /**
+   * Delete a standalone .sql dump file
+   */
+  async deleteSqlDump(filename: string): Promise<void> {
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(this.BACKUP_DIR, safeFilename);
+    await fs.unlink(filePath);
+    logger.info(`Deleted SQL dump file: ${safeFilename}`);
+  }
+
+  /**
+   * Delete multiple standalone .sql dump files
+   */
+  async bulkDeleteSqlDumps(filenames: string[]): Promise<{ deleted: number; failed: number }> {
+    let deleted = 0;
+    let failed = 0;
+
+    for (const filename of filenames) {
+      try {
+        await this.deleteSqlDump(filename);
+        deleted++;
+      } catch {
+        failed++;
+      }
+    }
+
+    return { deleted, failed };
+  }
+
+  /**
+   * Extract SQL dump file from a .zip backup into BACKUP_DIR for use in Migrations/SQL Editor
+   */
+  async extractSqlFromZip(backupId: string): Promise<{ filename: string; size: number }> {
+    const backup = await this.getBackup(backupId);
+    if (!backup) {
+      throw new Error('Backup not found');
+    }
+
+    const tempExtractDir = path.join(this.BACKUP_DIR, `.extract-${Date.now()}`);
+    await fs.mkdir(tempExtractDir, { recursive: true });
+
+    try {
+      await extract(backup.path, { dir: tempExtractDir });
+
+      const files = await fs.readdir(tempExtractDir);
+      const sqlFile = files.find((f) => f.endsWith('.sql'));
+
+      if (!sqlFile) {
+        throw new Error('No .sql dump file found inside the backup ZIP archive');
+      }
+
+      const instanceName = backup.instanceId || 'extracted';
+      const timestamp = Date.now();
+      const targetFilename = `${instanceName}-extracted-${timestamp}.sql`;
+      const targetPath = path.join(this.BACKUP_DIR, targetFilename);
+
+      await fs.copyFile(path.join(tempExtractDir, sqlFile), targetPath);
+      const stats = await fs.stat(targetPath);
+
+      logger.info(`Extracted SQL dump from ${backup.name} -> ${targetFilename}`);
+      return { filename: targetFilename, size: stats.size };
+    } finally {
+      await fs.rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * Stream / extract SQL dump directly from a ZIP backup file for download
+   */
+  async getSqlDumpFromZipStream(backupId: string): Promise<{ filename: string; content: string }> {
+    const backup = await this.getBackup(backupId);
+    if (!backup) {
+      throw new Error('Backup not found');
+    }
+
+    const tempExtractDir = path.join(this.BACKUP_DIR, `.download-extract-${Date.now()}`);
+    await fs.mkdir(tempExtractDir, { recursive: true });
+
+    try {
+      await extract(backup.path, { dir: tempExtractDir });
+      const files = await fs.readdir(tempExtractDir);
+      const sqlFile = files.find((f) => f.endsWith('.sql'));
+
+      if (!sqlFile) {
+        throw new Error('No .sql dump file found in backup ZIP');
+      }
+
+      const content = await fs.readFile(path.join(tempExtractDir, sqlFile), 'utf-8');
+      const downloadFilename = `${backup.name}.sql`;
+
+      return { filename: downloadFilename, content };
+    } finally {
+      await fs.rm(tempExtractDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * Inspect a SQL dump file (extract table names, statement count, header comments)
+   */
+  async inspectSqlDump(filename: string): Promise<{
+    filename: string;
+    size: number;
+    createdAt: Date;
+    tables: string[];
+    statementCount: number;
+    hasInsert: boolean;
+    headerPreview: string;
+  }> {
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(this.BACKUP_DIR, safeFilename);
+
+    const stats = await fs.stat(filePath);
+    const rawData = await this.readSqlDump(safeFilename, 500 * 1024); // First 500KB
+
+    const text = rawData.content;
+    const tableRegex = /CREATE TABLE (?:IF NOT EXISTS )?(?:[\w"]+\.)?["']?(\w+)["']?/gi;
+    const tables = new Set<string>();
+
+    let match;
+    while ((match = tableRegex.exec(text)) !== null) {
+      if (match[1]) tables.add(match[1]);
+    }
+
+    const statements = text.split(';').length;
+    const hasInsert = /INSERT INTO/i.test(text);
+
+    // Extract first 10 comment lines for header preview
+    const headerLines = text
+      .split('\n')
+      .slice(0, 15)
+      .filter((line) => line.trim().startsWith('--') || line.trim().startsWith('/*') || line.trim() === '')
+      .join('\n');
+
+    return {
+      filename: safeFilename,
+      size: stats.size,
+      createdAt: stats.mtime,
+      tables: Array.from(tables),
+      statementCount: statements,
+      hasInsert,
+      headerPreview: headerLines || text.substring(0, 300),
+    };
   }
 }
 

@@ -13,7 +13,7 @@ services:
     image: supabase/studio:latest
     restart: unless-stopped
     ports:
-      - ${STUDIO_PORT}:3000
+      - 127.0.0.1:${STUDIO_PORT}:3000
     healthcheck:
       test:
         [
@@ -43,6 +43,7 @@ services:
       SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      PG_META_CRYPTO_KEY: ${PG_META_CRYPTO_KEY:-${SECRET_KEY_BASE}}
       AUTH_JWT_SECRET: ${JWT_SECRET}
 
       LOGFLARE_API_KEY: ${LOGFLARE_API_KEY}
@@ -213,6 +214,7 @@ services:
       DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
       DB_ENC_KEY: supabaserealtime
       API_JWT_SECRET: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
       SECRET_KEY_BASE: ${SECRET_KEY_BASE}
       ERL_AFLAGS: -proto_dist inet_tcp
       DNS_NODES: "''"
@@ -316,7 +318,7 @@ services:
     image: supabase/logflare:latest
     restart: unless-stopped
     ports:
-      - ${ANALYTICS_PORT}:4000
+      - 127.0.0.1:${ANALYTICS_PORT}:4000
     deploy:
       resources:
         limits:
@@ -432,8 +434,8 @@ services:
     image: supabase/supavisor:2.7.4
     restart: unless-stopped
     ports:
-      - ${POSTGRES_PORT}:5432
-      - ${POOLER_PORT}:6543
+      - 127.0.0.1:${POSTGRES_PORT}:5432
+      - 127.0.0.1:${POOLER_PORT}:6543
     volumes:
       - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
     healthcheck:

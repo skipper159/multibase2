@@ -81,7 +81,7 @@ pm2 logs multibase-backend
 pm2 restart multibase-backend
 
 # Docker Compose (shared stack)
-docker compose -f shared/docker-compose.shared.yml --env-file shared/.env.shared --project-name multibase-shared up -d
+docker compose -f shared/docker-compose.shared.yml -f shared/docker-compose.override.yml --env-file shared/.env.shared --project-name multibase-shared up -d
 
 # Prisma (database)
 cd dashboard/backend && npx prisma migrate deploy

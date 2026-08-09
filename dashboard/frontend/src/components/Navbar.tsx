@@ -71,7 +71,7 @@ export default function Navbar() {
         <button
           className='sm:hidden p-2 text-muted-foreground hover:text-foreground hover:bg-white/10 rounded-lg transition-colors'
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label='Menü öffnen'
+          aria-label='Open menu'
         >
           {mobileMenuOpen ? <X className='w-5 h-5' /> : <Menu className='w-5 h-5' />}
         </button>

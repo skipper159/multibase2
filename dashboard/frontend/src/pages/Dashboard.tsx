@@ -181,10 +181,10 @@ export default function Dashboard() {
                   <p className='text-sm text-muted-foreground'>
                     {sharedStatus.runningServices}/{sharedStatus.totalServices} Services
                     {sharedStatus.status === 'running'
-                      ? ' — Alle Dienste aktiv'
+                      ? ' — All services active'
                       : sharedStatus.status === 'degraded'
-                        ? ' — Teilweise beeinträchtigt'
-                        : ' — Gestoppt'}
+                        ? ' — Partially degraded'
+                        : ' — Stopped'}
                   </p>
                 </div>
               </div>

@@ -47,6 +47,8 @@ jobs:
               /opt/multibase/shared/volumes/storage \
               /opt/multibase/shared/config 2>/dev/null || true
             chown multibase:multibase /opt/multibase/shared/volumes /opt/multibase/shared/volumes/db
+            chown multibase:multibase /opt/multibase/shared/image-versions.yml 2>/dev/null || true
+            install -d -o multibase -g multibase -m 0750 /opt/multibase/shared/.update-reports
             echo "✓ Ownership fixed (PostgreSQL data dir preserved)"
 
       - name: Post-Deployment Commands (VPS 2)
@@ -87,6 +89,12 @@ jobs:
             ALERT_CHECK_INTERVAL=60000
             SESSION_SECRET=${{ secrets.SESSION_SECRET }}
             ENV
+            fi
+
+            # Existing installations may predate the explicit update gate.
+            # Keep updates blocked until an operator opts in deliberately.
+            if ! grep -q '^IMAGE_UPDATE_SECURITY_GATE=' .env; then
+              echo 'IMAGE_UPDATE_SECURITY_GATE=blocked' >> .env
             fi
 
             # --- Datenbank-Pfad sicherstellen ---

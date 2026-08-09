@@ -1,0 +1,112 @@
+# Approved container images for shared, tenant, and temporary containers.
+#
+# Digest values should only be added after a successful staging test.
+# Without a digest, the status remains explicitly subject to review/approval.
+# PostgreSQL is always manual and is never updated by the web workflow.
+images:
+  shared-db:
+    repository: supabase/postgres
+    tag: 15.8.1.085
+    digest: null
+    updatePolicy: manual
+  shared-studio:
+    repository: supabase/studio
+    tag: 2026.08.03-sha-022b374
+    digest: null
+    updatePolicy: reviewed
+  shared-analytics:
+    repository: supabase/logflare
+    tag: 1.43.1
+    digest: null
+    updatePolicy: reviewed
+  shared-vector:
+    repository: timberio/vector
+    tag: 0.53.0-alpine
+    digest: null
+    updatePolicy: reviewed
+  shared-imgproxy:
+    repository: darthsim/imgproxy
+    tag: v3.30.1
+    digest: null
+    updatePolicy: reviewed
+  shared-meta:
+    repository: supabase/postgres-meta
+    tag: v0.96.6
+    digest: null
+    updatePolicy: reviewed
+  shared-pooler:
+    repository: supabase/supavisor
+    tag: 2.9.5
+    digest: null
+    updatePolicy: reviewed
+  shared-nginx-gateway:
+    repository: nginx
+    tag: 1.29.1-alpine
+    digest: null
+    updatePolicy: reviewed
+
+  tenant-studio:
+    repository: supabase/studio
+    tag: 2026.08.03-sha-022b374
+    digest: null
+    updatePolicy: reviewed
+  tenant-kong:
+    repository: kong/kong
+    tag: 3.9.3
+    digest: null
+    updatePolicy: reviewed
+  tenant-auth:
+    repository: supabase/gotrue
+    tag: v2.189.0
+    digest: null
+    updatePolicy: reviewed
+  tenant-rest:
+    repository: postgrest/postgrest
+    tag: v14.12
+    digest: null
+    updatePolicy: reviewed
+  tenant-realtime:
+    repository: supabase/realtime
+    tag: v2.102.3
+    digest: null
+    updatePolicy: reviewed
+  tenant-storage:
+    repository: supabase/storage-api
+    tag: v1.60.4
+    digest: null
+    updatePolicy: reviewed
+  tenant-imgproxy:
+    repository: darthsim/imgproxy
+    tag: v3.30.1
+    digest: null
+    updatePolicy: reviewed
+  tenant-meta:
+    repository: supabase/postgres-meta
+    tag: v0.96.6
+    digest: null
+    updatePolicy: reviewed
+  tenant-functions:
+    repository: supabase/edge-runtime
+    tag: v1.74.0
+    digest: null
+    updatePolicy: reviewed
+  tenant-analytics:
+    repository: supabase/logflare
+    tag: 1.43.1
+    digest: null
+    updatePolicy: reviewed
+  tenant-db:
+    repository: supabase/postgres
+    tag: 15.8.1.085
+    digest: null
+    updatePolicy: manual
+  tenant-vector:
+    repository: timberio/vector
+    tag: 0.53.0-alpine
+    digest: null
+    updatePolicy: reviewed
+  tenant-pooler:
+    repository: supabase/supavisor
+    tag: 2.9.5
+    digest: null
+    updatePolicy: reviewed

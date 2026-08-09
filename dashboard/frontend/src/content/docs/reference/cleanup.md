@@ -1,24 +1,24 @@
-# 🧹 Projekt-Aufräum-Empfehlungen (FINAL VERIFIZIERT)
+# 🧹 Project Cleanup Recommendations (FINAL VERIFIED)
 
-Diese Liste deckt nun sowohl das **Root-Verzeichnis** (`~/multibase`) als auch das **Dashboard-Verzeichnis** (`~/multibase/dashboard`) ab, basierend auf Ihrer Screenshot-Anfrage und dem Deep-Scan.
+This list covers both the **root directory** (`~/multibase`) and the **dashboard directory** (`~/multibase/dashboard`), based on the requested screenshot review and the deep scan.
 
 ---
 
-## 📂 1. Hauptverzeichnis (`~/multibase`)
+## 📂 1. Root Directory (`~/multibase`)
 
-### 🚨 KRITISCH: MUSS BLEIBEN! (Nicht löschen oder verschieben)
+### 🚨 CRITICAL: MUST REMAIN! (Do not delete or move)
 
-Diese Dateien werden vom Backend benötigt oder sind essentielle Konfigurationen.
+These files are required by the backend or contain essential configuration.
 
-- `supabase_manager.py` (Wird vom Backend ausgeführt)
-- `supabase_setup.py` (Wird importiert)
-- `requirements.txt` (Python Abhängigkeiten)
+- `supabase_manager.py` (Executed by the backend)
+- `supabase_setup.py` (Imported by the application)
+- `requirements.txt` (Python dependencies)
 - `docker-compose.yml`
 - `.env`
 
-### ✅ Aufräumen (Verschieben nach `_ARCHIVE/legacy_scripts`)
+### ✅ Cleanup (Move to `_ARCHIVE/legacy_scripts`)
 
-Diese Dateien werden **nicht** mehr vom Code referenziert.
+These files are no longer referenced by the codebase.
 
 - `generate_keys.py`
 - `test_security.py`
@@ -27,9 +27,9 @@ Diese Dateien werden **nicht** mehr vom Code referenziert.
 - `update_security.py`
 - `setup_secure_supabase.sh`
 
-### ✅ Aufräumen (Verschieben nach `_ARCHIVE/legacy_sql`)
+### ✅ Cleanup (Move to `_ARCHIVE/legacy_sql`)
 
-Diese `.sql` Dateien im Root sind lose und ungenutzt.
+These `.sql` files in the root directory are loose and unused.
 
 - `_supabase.sql`
 - `enable_logical_replication.sql`
@@ -39,23 +39,23 @@ Diese `.sql` Dateien im Root sind lose und ungenutzt.
 
 ---
 
-## 📂 2. Dashboard-Verzeichnis (`~/multibase/dashboard`)
+## 📂 2. Dashboard Directory (`~/multibase/dashboard`)
 
-Hier haben Sie Ihren Screenshot gemacht.
+This is where the screenshot review was performed.
 
-### 🚨 KRITISCH: MUSS BLEIBEN!
+### 🚨 CRITICAL: MUST REMAIN!
 
-Das sind Ihre Start-Skripte für das Dashboard. Wenn Sie diese löschen, können Sie das Dashboard nicht mehr bequem starten.
+These are the dashboard startup scripts. Removing them would make the dashboard harder to start.
 
-- `launch.sh` (Haupt-Startskript für Linux/Mac)
-- `start.ps1` (Start-skript für **Windows** - Sehr wichtig für Sie!)
-- `stop.sh` (Hilfsskript zum Beenden)
-- `status.sh` (Status-Check)
-- `scripts/` (Ordner mit Hilfs-Skripten)
+- `launch.sh` (Main startup script for Linux/macOS)
+- `start.ps1` (Startup script for **Windows**)
+- `stop.sh` (Shutdown helper script)
+- `status.sh` (Status check)
+- `scripts/` (Helper scripts directory)
 
-### 📄 Dokumentation (Verschieben nach `../Markdowns` oder `docs/`)
+### 📄 Documentation (Move to `../Markdowns` or `docs/`)
 
-Diese Markdown-Dateien blähen den Ordner auf und können bedenkenlos verschoben werden.
+These Markdown files are not part of the runtime and can be moved to a documentation directory if desired.
 
 - `COMPLETION.md`
 - `DEPLOYMENT.md`
@@ -66,14 +66,14 @@ Diese Markdown-Dateien blähen den Ordner auf und können bedenkenlos verschoben
 - `SCRIPTS.md`
 - `SYSTEM_AUDIT.md`
 
-### 🗑️ Optional löschbar
+### 🗑️ Optional cleanup
 
-- `package-lock.json` (Ist fast leer und hat keine Abhängigkeiten, kann weg, wenn es stört)
+- `package-lock.json` (Only remove if it is genuinely unused; package lockfiles are normally required for reproducible installs.)
 
 ---
 
-## 🏁 Zusammenfassung für Windows-User
+## 🏁 Summary for Windows Users
 
-1.  **Verschieben Sie die Python-Skripte im ROOT (`supabase_manager.py`...) ZURÜCK ins Root**, falls schon verschoben.
-2.  Lassen Sie `start.ps1` im Dashboard-Ordner.
-3.  Alles, was auf `.md` endet, können Sie in einen Doku-Ordner packen, um Übersicht zu schaffen.
+1. **Move the Python scripts back to the root directory** (`supabase_manager.py`, etc.) if they were moved elsewhere.
+2. Keep `start.ps1` in the dashboard directory.
+3. Move files ending in `.md` to a documentation directory to keep the project organized, if desired.

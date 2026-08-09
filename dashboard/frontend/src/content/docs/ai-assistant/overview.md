@@ -30,9 +30,9 @@ The assistant uses **Tool Calls**: when it needs to perform an action it selects
 
 | Provider | Recommended Model | Notes |
 |----------|------------------|-------|
-| **OpenAI** | `gpt-4o` / `gpt-4o-mini` | Best tool-call integration |
-| **Anthropic** | `claude-3-5-sonnet-20241022` | Highly accurate responses |
-| **Google Gemini** | `gemini-1.5-pro` | Cost-efficient |
+| **OpenAI** | `gpt-5.5` / `gpt-5.4-mini` / `gpt-5.4-nano` | Frontier, low-cost coding, and lowest-cost tiers |
+| **Anthropic** | `claude-opus-5` / `claude-sonnet-5` / `claude-haiku-4-5-20251001` | Capability, balance, and speed tiers |
+| **Google Gemini** | `gemini-3.6-flash` / `gemini-2.5-pro` / `gemini-2.5-flash` | Latest stable and reasoning options |
 | **OpenRouter** | Any model | Access many models via one API |
 
 ---

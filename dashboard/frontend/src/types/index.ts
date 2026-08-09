@@ -99,7 +99,7 @@ export interface CreateInstanceRequest {
   environment?: 'production' | 'staging' | 'dev' | 'preview';
   /** @deprecated Ports dynamisch via Nginx Gateway */
   basePort?: number;
-  /** @deprecated Alle 5 Tenant-Services laufen immer */
+  /** @deprecated All 5 tenant services always run */
   services?: string[];
 }
 
@@ -127,7 +127,7 @@ export interface TemplateConfig {
 
   /** @deprecated Ports dynamisch via Nginx Gateway */
   basePort?: number;
-  /** @deprecated Alle 5 Tenant-Services laufen immer */
+  /** @deprecated All 5 tenant services always run */
   services?: string[];
 }
 
@@ -252,11 +252,21 @@ export interface SharedInfraStatus {
 
 export interface SharedServiceStatus {
   name: string;
+  containerName?: string;
   status: string;
   health: 'healthy' | 'unhealthy' | 'unknown';
   uptime?: number;
   cpu?: number;
   memory?: number;
+  ports?: SharedServicePort[];
+}
+
+export interface SharedServicePort {
+  label: string;
+  host?: number;
+  container: number;
+  protocol: 'tcp' | 'http';
+  public: boolean;
 }
 
 export interface SharedPorts {

@@ -11,20 +11,30 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
-import { Pool } from 'pg';
 import DockerManager from '../services/DockerManager';
 import { StudioManager } from '../services/StudioManager';
 import MetricsCollector from '../services/MetricsCollector';
 import { logger } from '../utils/logger';
 import { parseEnvFile } from '../utils/envParser';
-import { requireAuth } from '../middleware/authMiddleware';
+import { requireAuth, requireAdmin } from '../middleware/authMiddleware';
 import { auditLog } from '../middleware/auditLog';
+import { requireScope } from '../middleware/requireScope';
+import { SCOPES } from '../constants/scopes';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+const PROJECT_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function projectDatabaseName(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const projectName = value.trim().toLowerCase();
+  if (!PROJECT_NAME_PATTERN.test(projectName)) return null;
+  return `project_${projectName.replace(/-/g, '_')}`;
+}
 
 export function createSharedRoutes(
   dockerManager: DockerManager,
@@ -48,18 +58,6 @@ export function createSharedRoutes(
       return parseEnvFile(envPath);
     }
     return null;
-  };
-
-  const getSharedPgPool = () => {
-    const sharedEnv = getSharedEnv();
-    return new Pool({
-      host: '127.0.0.1',
-      port: parseInt(sharedEnv?.SHARED_PG_PORT || '5432', 10),
-      user: 'postgres',
-      password: sharedEnv?.SHARED_POSTGRES_PASSWORD || process.env.POSTGRES_PASSWORD,
-      database: 'postgres',
-      connectionTimeoutMillis: 5000,
-    });
   };
 
   /**
@@ -95,9 +93,14 @@ export function createSharedRoutes(
         diskUsedMB = await metricsCollector.getDiskUsageForShared();
       }
 
+      const servicesWithPorts = services.map((service) => ({
+        ...service,
+        ports: getSharedServicePorts(service.name, ports),
+      }));
+
       res.json({
         status,
-        services,
+        services: servicesWithPorts,
         ports,
         totalServices: total,
         runningServices: running,
@@ -111,10 +114,76 @@ export function createSharedRoutes(
   });
 
   /**
+   * GET /api/shared/logs
+   * Get recent logs for the shared infrastructure containers.
+   * A service can be selected using its short name (e.g. "db" or "studio").
+   */
+  router.get('/logs', requireScope(SCOPES.LOGS.READ), async (req: Request, res: Response) => {
+    try {
+      const requestedService = typeof req.query.service === 'string' ? req.query.service.trim() : '';
+      const parsedTail = typeof req.query.tail === 'string' ? parseInt(req.query.tail, 10) : 100;
+      const tail = Number.isFinite(parsedTail) ? Math.min(Math.max(parsedTail, 1), 1000) : 100;
+      const containers = await dockerManager.listSharedContainers();
+
+      const selectedContainers = requestedService
+        ? containers.filter((container) => {
+            const containerName = container.Names[0].replace('/', '');
+            const shortName = containerName.replace('multibase-', '');
+            return containerName === requestedService || shortName === requestedService;
+          })
+        : containers;
+
+      if (requestedService && selectedContainers.length === 0) {
+        return res.status(404).json({ error: `Shared service ${requestedService} not found` });
+      }
+
+      const logs: string[] = [];
+      for (const container of selectedContainers) {
+        const containerName = container.Names[0].replace('/', '');
+        const rawLogs = await dockerManager.getContainerLogs(container.Id, {
+          tail,
+          timestamps: true,
+        });
+
+        rawLogs
+          .split('\n')
+          .filter((line) => line.trim())
+          .forEach((line) => logs.push(`[${containerName}] ${line}`));
+      }
+
+      return res.json({ logs });
+    } catch (error: any) {
+      logger.error('Error getting shared infrastructure logs:', error);
+      return res.status(500).json({ error: error.message || 'Failed to get shared logs' });
+    }
+  });
+
+  /**
+   * POST /api/shared/services/:service/restart
+   * Restart one shared infrastructure container.
+   */
+  router.post(
+    '/services/:service/restart',
+    requireScope(SCOPES.INSTANCES.RESTART),
+    auditLog('SHARED_SERVICE_RESTART', {
+      getResource: (req) => req.params.service,
+    }),
+    async (req: Request, res: Response) => {
+      try {
+        await dockerManager.restartSharedService(req.params.service);
+        return res.json({ message: `Shared service ${req.params.service} restarted successfully` });
+      } catch (error: any) {
+        logger.error(`Error restarting shared service ${req.params.service}:`, error);
+        return res.status(500).json({ error: error.message || 'Failed to restart shared service' });
+      }
+    }
+  );
+
+  /**
    * POST /api/shared/start
    * Start shared infrastructure via docker compose
    */
-  router.post('/start', auditLog('SHARED_INFRA_START'), async (_req: Request, res: Response) => {
+  router.post('/start', requireAdmin, auditLog('SHARED_INFRA_START'), async (_req: Request, res: Response) => {
     try {
       const sharedDir = getSharedDir();
       const composePath = path.join(sharedDir, 'docker-compose.shared.yml');
@@ -125,8 +194,9 @@ export function createSharedRoutes(
       }
 
       logger.info('Starting shared infrastructure...');
-      const { stdout, stderr } = await execAsync(
-        'docker compose -f docker-compose.shared.yml --env-file .env.shared up -d',
+      const { stdout, stderr } = await execFileAsync(
+        'docker',
+        ['compose', '-f', 'docker-compose.shared.yml', '--env-file', '.env.shared', 'up', '-d'],
         { cwd: sharedDir }
       );
 
@@ -144,13 +214,14 @@ export function createSharedRoutes(
    * POST /api/shared/stop
    * Stop shared infrastructure
    */
-  router.post('/stop', auditLog('SHARED_INFRA_STOP'), async (_req: Request, res: Response) => {
+  router.post('/stop', requireAdmin, auditLog('SHARED_INFRA_STOP'), async (_req: Request, res: Response) => {
     try {
       const sharedDir = getSharedDir();
 
       logger.info('Stopping shared infrastructure...');
-      const { stdout } = await execAsync(
-        'docker compose -f docker-compose.shared.yml --env-file .env.shared down',
+      const { stdout } = await execFileAsync(
+        'docker',
+        ['compose', '-f', 'docker-compose.shared.yml', '--env-file', '.env.shared', 'down'],
         { cwd: sharedDir }
       );
 
@@ -167,28 +238,31 @@ export function createSharedRoutes(
    * Uses docker exec to avoid Docker Desktop Windows TCP auth issues
    */
   router.get('/databases', async (_req: Request, res: Response) => {
-    const pool = getSharedPgPool();
     try {
-      const result = await pool.query(
-        `SELECT datname, pg_database_size(datname) as size_bytes FROM pg_database WHERE datname LIKE 'project_%' ORDER BY datname`
-      );
+      const { stdout } = await execFileAsync('docker', [
+        'exec', 'multibase-db', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-A', '-t',
+        '-c', "SELECT datname, pg_database_size(datname) FROM pg_database WHERE datname LIKE 'project_%' ORDER BY datname;",
+      ]);
 
-      const databases = result.rows.map((row) => {
-        const bytes = parseInt(row.size_bytes, 10) || 0;
-        return {
-          name: row.datname,
-          projectName: row.datname.replace('project_', '').replace(/_/g, '-'),
-          sizeBytes: bytes,
-          sizeFormatted: formatBytes(bytes),
-        };
-      });
+      const databases = stdout
+        .trim()
+        .split('\n')
+        .filter((line) => line.trim().length > 0)
+        .map((line) => {
+          const [datname, sizeStr] = line.split('|');
+          const bytes = parseInt(sizeStr, 10) || 0;
+          return {
+            name: datname,
+            projectName: datname.replace('project_', '').replace(/_/g, '-'),
+            sizeBytes: bytes,
+            sizeFormatted: formatBytes(bytes),
+          };
+        });
 
       res.json({ databases, count: databases.length });
     } catch (error: any) {
       logger.error('Error listing databases:', error);
-      res.status(500).json({ error: error.message });
-    } finally {
-      await pool.end();
+      res.status(500).json({ error: error.message || 'Failed to list databases' });
     }
   });
 
@@ -197,27 +271,25 @@ export function createSharedRoutes(
    * Create a new project database
    * Uses docker exec to avoid Docker Desktop Windows TCP auth issues
    */
-  router.post('/databases', auditLog('SHARED_DATABASE_CREATE', { includeBody: true, getResource: (req) => req.body?.projectName || 'unknown' }), async (req: Request, res: Response) => {
+  router.post('/databases', requireAdmin, auditLog('SHARED_DATABASE_CREATE', { includeBody: true, getResource: (req) => req.body?.projectName || 'unknown' }), async (req: Request, res: Response) => {
     try {
       const { projectName } = req.body;
-      if (!projectName) {
-        res.status(400).json({ error: 'projectName required' });
+      const dbName = projectDatabaseName(projectName);
+      if (!dbName) {
+        res.status(400).json({ error: 'projectName must contain only lowercase letters, numbers, and single hyphens' });
         return;
       }
 
-      const dbName = `project_${projectName}`.replace(/-/g, '_');
-      const createPool = getSharedPgPool();
-      try {
-        await createPool.query(`CREATE DATABASE ${dbName}`);
-      } finally {
-        await createPool.end();
-      }
+      await execFileAsync('docker', [
+        'exec', 'multibase-db', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
+        '-c', `CREATE DATABASE "${dbName}";`,
+      ]);
 
       logger.info(`Created database: ${dbName}`);
       res.json({ success: true, database: dbName });
     } catch (error: any) {
       logger.error('Error creating database:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message || 'Failed to create database' });
     }
   });
 
@@ -226,27 +298,26 @@ export function createSharedRoutes(
    * Drop a project database
    * Uses docker exec to avoid Docker Desktop Windows TCP auth issues
    */
-  router.delete('/databases/:name', auditLog('SHARED_DATABASE_DROP', { getResource: (req) => req.params.name }), async (req: Request, res: Response) => {
+  router.delete('/databases/:name', requireAdmin, auditLog('SHARED_DATABASE_DROP', { getResource: (req) => req.params.name }), async (req: Request, res: Response) => {
     try {
-      const dbName = `project_${req.params.name}`.replace(/-/g, '_');
+      const dbName = projectDatabaseName(req.params.name);
+      if (!dbName) {
+        res.status(400).json({ error: 'Invalid project database name' });
+        return;
+      }
 
       // Terminate active connections first, then drop
-      const dropPool = getSharedPgPool();
-      try {
-        await dropPool.query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname=$1 AND pid<>pg_backend_pid()`,
-          [dbName]
-        );
-        await dropPool.query(`DROP DATABASE IF EXISTS ${dbName}`);
-      } finally {
-        await dropPool.end();
-      }
+      await execFileAsync('docker', [
+        'exec', 'multibase-db', 'psql', '-U', 'supabase_admin', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1',
+        '-c', `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${dbName}' AND pid<>pg_backend_pid();`,
+        '-c', `DROP DATABASE IF EXISTS "${dbName}";`,
+      ]);
 
       logger.info(`Dropped database: ${dbName}`);
       res.json({ success: true, database: dbName });
     } catch (error: any) {
       logger.error('Error dropping database:', error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message || 'Failed to drop database' });
     }
   });
 
@@ -259,6 +330,33 @@ function formatBytes(bytes: number): string {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+}
+
+function getSharedServicePorts(
+  serviceName: string,
+  ports: { postgres: number; studio: number; analytics: number; pooler: number; gateway: number; meta: number }
+) {
+  const definitions: Record<string, Array<{
+    label: string;
+    host?: number;
+    container: number;
+    protocol: 'tcp' | 'http';
+    public: boolean;
+  }>> = {
+    db: [{ label: 'PostgreSQL', host: ports.postgres, container: 5432, protocol: 'tcp', public: true }],
+    studio: [{ label: 'Studio', host: ports.studio, container: 3000, protocol: 'http', public: true }],
+    analytics: [{ label: 'Logflare API', host: ports.analytics, container: 4000, protocol: 'http', public: true }],
+    'nginx-gateway': [{ label: 'HTTP Gateway', host: ports.gateway, container: 8000, protocol: 'http', public: true }],
+    pooler: [
+      { label: 'PgBouncer / Supavisor', host: ports.pooler, container: 6543, protocol: 'tcp', public: true },
+      { label: 'Supavisor API', container: 4000, protocol: 'http', public: false },
+    ],
+    meta: [{ label: 'Postgres Meta API', container: ports.meta, protocol: 'http', public: false }],
+    vector: [{ label: 'Vector health', container: 9001, protocol: 'http', public: false }],
+    imgproxy: [{ label: 'imgproxy', container: 5001, protocol: 'http', public: false }],
+  };
+
+  return definitions[serviceName] || [];
 }
 
 export default createSharedRoutes;

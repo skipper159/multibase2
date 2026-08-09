@@ -8,7 +8,7 @@ interface AuditOptions {
   /** Include query params in audit log details */
   includeQuery?: boolean;
   /** Custom resource extractor function */
-  getResource?: (req: Request) => string;
+  getResource?: (req: Request, res?: Response) => string;
 }
 
 /**
@@ -28,9 +28,12 @@ export const auditLog = (action: string, options: AuditOptions = {}) => {
         const userId = (req as any).user?.id || null;
         const success = res.statusCode < 400;
 
-        // Build resource identifier
-        let resource = options.getResource
-          ? options.getResource(req)
+        // Build resource identifier (check res.locals.auditResource first)
+        const auditLocals = res.locals ?? {};
+        const resource = auditLocals.auditResource
+          ? auditLocals.auditResource
+          : options.getResource
+          ? options.getResource(req, res)
           : req.params.name || req.params.id || req.path;
 
         // Build details object
@@ -38,6 +41,7 @@ export const auditLog = (action: string, options: AuditOptions = {}) => {
           method: req.method,
           statusCode: res.statusCode,
           duration: Date.now() - startTime,
+          ...(auditLocals.auditDetails || {}),
         };
 
         if (options.includeBody && req.body && Object.keys(req.body).length > 0) {

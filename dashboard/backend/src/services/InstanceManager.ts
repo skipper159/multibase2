@@ -26,6 +26,7 @@ import {
 } from '../utils/envParser';
 import { logger } from '../utils/logger';
 import DockerManager from './DockerManager';
+import { loadImageMatrix } from './ImageRegistryService';
 import { RedisCache } from './RedisCache';
 import {
   generateAndWriteTenantConfig,
@@ -656,7 +657,8 @@ export class InstanceManager {
       // damit der User es bei Bedarf noch überschreiben kann.
       // -------------------------------------------------------
       {
-        const mode = process.env.DEPLOYMENT_MODE || 'cloud';
+        const isLocal = request.deploymentType === 'localhost' || process.env.DEPLOYMENT_MODE === 'local';
+        const mode = isLocal ? 'local' : (process.env.DEPLOYMENT_MODE || 'cloud');
         const envPath = path.join(projectPath, '.env');
         if (fs.existsSync(envPath)) {
           const currentEnv = parseEnvFile(envPath);
@@ -768,10 +770,10 @@ export class InstanceManager {
     instance: SupabaseInstance,
     deploymentType: 'localhost' | 'cloud'
   ): Promise<void> {
-    const mode = process.env.DEPLOYMENT_MODE || 'cloud';
+    const isLocal = deploymentType === 'localhost' || process.env.DEPLOYMENT_MODE === 'local' || process.platform === 'win32';
 
     // ── LOCAL MODE ──────────────────────────────────────────────────────────
-    if (mode === 'local') {
+    if (isLocal) {
       logger.info(
         `[local] Skipping nginx config for "${instance.name}" — ` +
           `Studio: http://localhost:${instance.ports.studio ?? 3000}, ` +
@@ -990,6 +992,33 @@ ${sslBlock}
         access_log off;
         return 200 "OK";
         add_header Content-Type text/plain;
+    }
+
+    # Supabase Auth is public-by-design; GoTrue validates the anon key and credentials.
+    # The dashboard auth_request must not intercept browser CORS preflight requests.
+    location /auth/v1/ {
+        auth_request off;
+        if ($request_method = OPTIONS) { return 204; }
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin $http_origin always;
+        add_header Access-Control-Allow-Credentials true always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Accept, Authorization, Content-Type, X-Requested-With, apikey, x-client-info, x-supabase-api-version, accept-profile, content-profile, prefer, Range" always;
+        add_header Access-Control-Expose-Headers "Content-Length, Content-Range, Content-Type, X-Supabase-Api-Version" always;
+        add_header Vary Origin always;
+        proxy_pass http://127.0.0.1:${instance.ports.gateway_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header apikey $http_apikey;
+        proxy_buffering off;
+        proxy_request_buffering off;
     }
 
     # Main API location with authentication
@@ -1637,6 +1666,33 @@ ${sslBlock}
     const targetPath = path.join(projectPath, 'docker-compose.yml');
 
     let content = fs.readFileSync(templatePath, 'utf8');
+
+    // Keep newly generated tenant stacks on the same reviewed image matrix as
+    // shared and temporary Studio/Meta containers.
+    try {
+      const matrix = loadImageMatrix(path.join(this.templatesPath, 'shared', 'image-versions.yml'));
+      const replacements: Array<[RegExp, string]> = [
+        [/image: supabase\/studio:[^\s]+/g, 'tenant-studio'],
+        [/image: kong:[^\s]+/g, 'tenant-kong'],
+        [/image: supabase\/gotrue:[^\s]+/g, 'tenant-auth'],
+        [/image: postgrest\/postgrest:[^\s]+/g, 'tenant-rest'],
+        [/image: supabase\/realtime:[^\s]+/g, 'tenant-realtime'],
+        [/image: supabase\/storage-api:[^\s]+/g, 'tenant-storage'],
+        [/image: darthsim\/imgproxy:[^\s]+/g, 'tenant-imgproxy'],
+        [/image: supabase\/postgres-meta:[^\s]+/g, 'tenant-meta'],
+        [/image: supabase\/edge-runtime:[^\s]+/g, 'tenant-functions'],
+        [/image: supabase\/logflare:[^\s]+/g, 'tenant-analytics'],
+        [/image: supabase\/postgres:[^\s]+/g, 'tenant-db'],
+        [/image: timberio\/vector:[^\s]+/g, 'tenant-vector'],
+        [/image: supabase\/supavisor:[^\s]+/g, 'tenant-pooler'],
+      ];
+      for (const [pattern, matrixName] of replacements) {
+        const definition = matrix.images[matrixName];
+        if (definition) content = content.replace(pattern, `image: ${definition.repository}:${definition.tag}`);
+      }
+    } catch (error) {
+      logger.warn(`Image matrix unavailable while creating tenant ${projectName}: ${error instanceof Error ? error.message : String(error)}`);
+    }
 
     // Update project name
     content = content.replace(/^name: supabase$/m, `name: ${projectName}`);

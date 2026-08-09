@@ -246,6 +246,15 @@ export interface SharedServiceStatus {
   uptime?: number;
   cpu?: number;
   memory?: number;
+  ports?: SharedServicePort[];
+}
+
+export interface SharedServicePort {
+  label: string;
+  host?: number;
+  container: number;
+  protocol: 'tcp' | 'http';
+  public: boolean;
 }
 
 export interface SharedInfraDiskUsage {
