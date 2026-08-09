@@ -355,7 +355,7 @@ function getSharedServicePorts(
     meta: [{ label: 'Postgres Meta API', container: ports.meta, protocol: 'http', public: false }],
     vector: [{ label: 'Vector health', container: 9001, protocol: 'http', public: false }],
     imgproxy: [{ label: 'imgproxy', container: 5001, protocol: 'http', public: false }],
-    'docker-proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: false }],
+    'docker-proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: true }],
   };
 
   return definitions[serviceName] || [];

@@ -19,7 +19,7 @@ export class DockerManager {
         // TCP connection
         const cleanHost = dockerHost.replace('tcp://', '');
         const [host, portStr] = cleanHost.split(':');
-        dockerOptions = { host, port: portStr ? parseInt(portStr, 10) : 2375 };
+        dockerOptions = { host, port: portStr ? parseInt(portStr, 10) : 2378 };
       } else {
         dockerOptions = { socketPath: dockerHost };
       }
