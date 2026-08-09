@@ -15,6 +15,9 @@ export function createInstanceAuthRoutes() {
    */
   router.get('/verify-instance-access', async (req: Request, res: Response): Promise<any> => {
     try {
+      logger.info(
+        `verify-instance-access REQ: cookies=${JSON.stringify(req.cookies)}, rawCookie=${req.headers['cookie']}, authHeader=${req.headers.authorization}`
+      );
       // 1. Extract token from cookie (parsed or raw header) or Authorization header
       let token =
         req.cookies?.auth_token ||
