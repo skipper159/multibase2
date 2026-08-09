@@ -108,6 +108,12 @@ const configuredCorsOrigins = process.env.CORS_ORIGIN
 const isOriginAllowed = (origin: string | undefined): boolean => {
   if (!origin) return true;
   if (configuredCorsOrigins.includes(origin)) return true;
+  const rootDomain = process.env.ROOT_DOMAIN;
+  if (rootDomain) {
+    const escapedDomain = rootDomain.replace(/\./g, '\\.');
+    const domainRegex = new RegExp(`^https?:\\/\\/([a-zA-Z0-9-]+\\.)*${escapedDomain}(:\\d+)?$`);
+    if (domainRegex.test(origin)) return true;
+  }
   // Allow any localhost / 127.0.0.1 port in dev / local environment
   if (/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) return true;
   return false;
