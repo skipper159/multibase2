@@ -957,6 +957,7 @@ DATABASE_URL="file:./data/multibase.db"
 REDIS_URL=redis://:${redis_password}@localhost:6379
 
 # Docker
+DOCKER_HOST=tcp://127.0.0.1:2375
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Paths
@@ -1240,6 +1241,39 @@ start_redis() {
             redis-server --requirepass "$redis_pass" >> "$LOG_FILE" 2>&1
 
         step_new "Redis container started"
+    fi
+}
+
+start_docker_proxy() {
+    if [ "$DEPLOY_MODE" = "split-frontend" ]; then
+        return
+    fi
+
+    step "Starting Docker Socket Proxy..."
+
+    local proxy_container="multibase-docker-proxy"
+    if docker ps --format '{{.Names}}' | grep -q "^${proxy_container}$"; then
+        step_ok "Docker Socket Proxy already running"
+    else
+        docker rm -f "$proxy_container" &>/dev/null || true
+        docker run -d \
+            --name "$proxy_container" \
+            --restart unless-stopped \
+            -p 127.0.0.1:2375:2375 \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            -e CONTAINERS=1 \
+            -e POST=1 \
+            -e IMAGES=1 \
+            -e NETWORKS=1 \
+            -e INFO=1 \
+            -e VERSION=1 \
+            -e PING=1 \
+            -e EVENTS=1 \
+            -e VOLUMES=0 \
+            -e BUILD=0 \
+            -e PRIVILEGED=0 \
+            tecnativa/docker-socket-proxy >> "$LOG_FILE" 2>&1
+        step_new "Docker Socket Proxy started on 127.0.0.1:2375"
     fi
 }
 
@@ -2097,6 +2131,7 @@ main() {
     setup_shared_infra
     build_frontend
     run_db_migrations
+    start_docker_proxy
     start_redis
     configure_nginx
     start_pm2

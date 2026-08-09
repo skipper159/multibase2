@@ -278,6 +278,7 @@ export interface SharedPorts {
   /** @deprecated Use gateway instead */
   kong?: number;
   meta?: number;
+  docker_proxy?: number;
 }
 
 // Shared Infrastructure Config
@@ -290,6 +291,7 @@ export const SHARED_SERVICES = [
   'multibase-meta',
   'multibase-pooler',
   'multibase-nginx-gateway',
+  'multibase-docker-proxy',
 ] as const;
 
 export const TENANT_SERVICES = ['auth', 'rest', 'realtime', 'storage', 'edge-functions'] as const;

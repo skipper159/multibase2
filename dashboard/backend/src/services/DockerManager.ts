@@ -17,7 +17,9 @@ export class DockerManager {
         dockerOptions = { socketPath: dockerHost.replace('npipe://', '') };
       } else if (dockerHost.startsWith('tcp://')) {
         // TCP connection
-        dockerOptions = { host: dockerHost.replace('tcp://', ''), port: 2375 };
+        const cleanHost = dockerHost.replace('tcp://', '');
+        const [host, portStr] = cleanHost.split(':');
+        dockerOptions = { host, port: portStr ? parseInt(portStr, 10) : 2375 };
       } else {
         dockerOptions = { socketPath: dockerHost };
       }

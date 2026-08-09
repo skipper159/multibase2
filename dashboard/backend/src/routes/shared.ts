@@ -85,6 +85,7 @@ export function createSharedRoutes(
           10
         ),
         meta: parseInt(sharedEnv?.META_PORT || '8080', 10),
+        docker_proxy: parseInt(sharedEnv?.DOCKER_PROXY_PORT || '2375', 10),
       };
 
       // Optionally append shared disk usage (cached 30 min, may be null on first call)
@@ -334,7 +335,7 @@ function formatBytes(bytes: number): string {
 
 function getSharedServicePorts(
   serviceName: string,
-  ports: { postgres: number; studio: number; analytics: number; pooler: number; gateway: number; meta: number }
+  ports: { postgres: number; studio: number; analytics: number; pooler: number; gateway: number; meta: number; docker_proxy: number }
 ) {
   const definitions: Record<string, Array<{
     label: string;
@@ -354,6 +355,7 @@ function getSharedServicePorts(
     meta: [{ label: 'Postgres Meta API', container: ports.meta, protocol: 'http', public: false }],
     vector: [{ label: 'Vector health', container: 9001, protocol: 'http', public: false }],
     imgproxy: [{ label: 'imgproxy', container: 5001, protocol: 'http', public: false }],
+    'docker-proxy': [{ label: 'Docker Socket Proxy', host: ports.docker_proxy, container: 2375, protocol: 'tcp', public: false }],
   };
 
   return definitions[serviceName] || [];
