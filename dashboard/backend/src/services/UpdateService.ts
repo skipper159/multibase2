@@ -818,10 +818,10 @@ export class UpdateService extends EventEmitter {
     const gitLabel = targetVersion ? `install v${targetVersion}` : 'git pull';
     const steps =
       this.frontendServe === 'local'
-        ? [gitLabel, 'backend install', 'frontend build', 'restart']
+        ? [gitLabel, 'backend install', 'database migrations', 'backend build', 'frontend build', 'restart']
         : canDeploySplit
-          ? [gitLabel, 'backend install', 'frontend build', 'frontend deploy', 'restart']
-          : [gitLabel, 'backend install', 'restart'];
+          ? [gitLabel, 'backend install', 'database migrations', 'backend build', 'frontend build', 'frontend deploy', 'restart']
+          : [gitLabel, 'backend install', 'database migrations', 'backend build', 'restart'];
     this.emit('update:start', { type: 'multibase', steps, targetVersion: targetVersion ?? null });
 
     const gitBranch = process.env.GIT_UPDATE_BRANCH ?? 'main';
@@ -855,10 +855,21 @@ export class UpdateService extends EventEmitter {
       const backendDir = path.join(this.rootDir, 'dashboard', 'backend');
       // Prisma-Client explizit generieren (durch --ignore-scripts übersprungen)
       await this.runCommand('npx', ['prisma', 'generate'], backendDir);
-      // Backend kompilieren (TypeScript -> JavaScript)
+      this.emitStepDone('backend install', 1);
+
+      // Step 2: apply all pending Prisma migrations before compiling the backend
+      const migrationStepIdx = steps.indexOf('database migrations');
+      this.emitStep('database migrations', migrationStepIdx, steps.length);
+      this.emit('update:log', { line: 'Applying database migrations...' });
+      await this.runCommand('npx', ['prisma', 'migrate', 'deploy'], backendDir);
+      this.emitStepDone('database migrations', migrationStepIdx);
+
+      // Step 3: Backend kompilieren (TypeScript -> JavaScript)
+      const backendBuildStepIdx = steps.indexOf('backend build');
+      this.emitStep('backend build', backendBuildStepIdx, steps.length);
       this.emit('update:log', { line: 'Building backend...' });
       await this.runCommand('npm', ['run', 'build'], backendDir);
-      this.emitStepDone('backend install', 1);
+      this.emitStepDone('backend build', backendBuildStepIdx);
 
       const frontendDir = path.join(this.rootDir, 'dashboard', 'frontend');
 

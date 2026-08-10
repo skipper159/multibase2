@@ -320,12 +320,13 @@ function SecurityGateCard({
                 <select
                   value={approvalDuration}
                   onChange={(event) => onDurationChange(Number(event.target.value))}
-                  className='ml-auto bg-transparent font-medium outline-none'
+                  className='ml-auto rounded-md border border-border bg-input px-2 py-1 font-medium text-foreground outline-none focus:ring-2 focus:ring-primary'
+                  style={{ colorScheme: 'dark' }}
                 >
-                  <option value={30}>30 min</option>
-                  <option value={60}>60 min</option>
-                  <option value={120}>120 min</option>
-                  <option value={240}>240 min</option>
+                  <option className='bg-input text-foreground' value={30}>30 min</option>
+                  <option className='bg-input text-foreground' value={60}>60 min</option>
+                  <option className='bg-input text-foreground' value={120}>120 min</option>
+                  <option className='bg-input text-foreground' value={240}>240 min</option>
                 </select>
               </label>
               <button
