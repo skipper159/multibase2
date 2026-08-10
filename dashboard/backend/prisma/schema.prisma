@@ -145,6 +145,7 @@ model User {
   email            String              @unique
   username         String              @unique
   passwordHash     String
+  mustChangePassword Boolean           @default(false)
   role             String              @default("user") // 'admin', 'user', 'viewer'
   isActive         Boolean             @default(true)
   avatar           String?             // Avatar URL/Path

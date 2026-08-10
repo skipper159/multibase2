@@ -50,6 +50,7 @@ const queryClient = new QueryClient({
 import LandingPage from './pages/LandingPage';
 import FeedbackPage from './pages/FeedbackPage';
 import VerifyEmail from './pages/VerifyEmail';
+import ForcePasswordChangeModal from './components/ForcePasswordChangeModal';
 
 function AppContent() {
   // Initialize WebSocket connection for real-time updates
@@ -136,6 +137,7 @@ function AppContent() {
         {/* Fallback to Landing Page */}
         <Route path='*' element={<Navigate to='/' replace />} />
       </Routes>
+      <ForcePasswordChangeModal />
     </div>
   );
 }

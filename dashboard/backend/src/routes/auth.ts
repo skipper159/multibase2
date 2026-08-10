@@ -3,13 +3,25 @@ import AuthService from '../services/AuthService';
 import { logger } from '../utils/logger';
 import { loginLimiter, registerLimiter } from '../middleware/rateLimiter';
 import { validate } from '../middleware/validate';
-import { LoginSchema, RegisterSchema, UpdatePasswordSchema } from '../middleware/schemas';
+import {
+  ChangePasswordSchema,
+  LoginSchema,
+  RegisterSchema,
+  UpdatePasswordSchema,
+} from '../middleware/schemas';
 import { auditLog } from '../middleware/auditLog';
 import { avatarUpload, AVATARS_URL_PREFIX } from '../middleware/uploadConfig';
 import { generateCaptcha, validateCaptcha } from '../services/captchaService';
 
 export function createAuthRoutes() {
   const router = Router();
+  const authCookieOptions = (includeMaxAge = true) => ({
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
+    ...(includeMaxAge ? { maxAge: 7 * 24 * 60 * 60 * 1000 } : {}),
+  });
 
   /**
    * GET /api/auth/captcha
@@ -99,13 +111,7 @@ export function createAuthRoutes() {
 
         // Set cookie for subdomain access if session was created
         if (result.session) {
-          res.cookie('auth_token', result.session.token, {
-            httpOnly: true,
-            secure: true, // Required for SameSite=None
-            sameSite: 'none',
-            domain: process.env.COOKIE_DOMAIN,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          });
+          res.cookie('auth_token', result.session.token, authCookieOptions());
         }
 
         res.json(result);
@@ -142,12 +148,7 @@ export function createAuthRoutes() {
         await AuthService.logout(token);
 
         // Clear cookie
-        res.clearCookie('auth_token', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          domain: process.env.COOKIE_DOMAIN,
-        });
+        res.clearCookie('auth_token', authCookieOptions(false));
 
         res.json({ message: 'Logged out successfully' });
       } catch (error) {
@@ -327,6 +328,39 @@ export function createAuthRoutes() {
       });
     }
   });
+
+  /**
+   * PUT /api/auth/password
+   * Change the currently authenticated user's password.
+   */
+  router.put(
+    '/password',
+    validate(ChangePasswordSchema),
+    auditLog('USER_PASSWORD_CHANGE'),
+    async (req: Request, res: Response): Promise<any> => {
+      try {
+        const token = req.headers.authorization?.replace('Bearer ', '');
+        if (!token) {
+          return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const session = await AuthService.validateSession(token);
+        if (!session) {
+          return res.status(401).json({ error: 'Invalid or expired session' });
+        }
+        (req as any).user = session.user;
+
+        const { currentPassword, newPassword } = req.body;
+        await AuthService.changePassword(session.user.id, currentPassword, newPassword);
+        res.json({ message: 'Password changed successfully' });
+      } catch (error) {
+        logger.error('Error changing password:', error);
+        res.status(400).json({
+          error: error instanceof Error ? error.message : 'Failed to change password',
+        });
+      }
+    }
+  );
 
   /**
    * DELETE /api/auth/users/:id
@@ -659,13 +693,7 @@ export function createAuthRoutes() {
         (req as any).user = result.user;
 
         // Set cookie for subdomain access
-        res.cookie('auth_token', result.session.token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          domain: process.env.COOKIE_DOMAIN,
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        });
+        res.cookie('auth_token', result.session.token, authCookieOptions());
 
         res.json(result);
       } catch (error) {

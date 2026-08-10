@@ -163,13 +163,13 @@ export default function UserProfile() {
       toast.error('Passwords do not match');
       return;
     }
-    if (newPassword.length < 6) {
-      toast.error('Password must be at least 6 characters');
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters');
       return;
     }
     setChangingPassword(true);
     try {
-      const response = await fetch(`${API_URL}/api/auth/users/${user?.id}/password`, {
+      const response = await fetch(`${API_URL}/api/auth/password`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

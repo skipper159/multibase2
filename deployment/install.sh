@@ -754,6 +754,25 @@ setup_user_dirs() {
     chown -R "$INSTALL_USER":"$INSTALL_USER" "$INSTALL_DIR"
 }
 
+# Restrict tenant directories and environment files containing credentials.
+# Docker-managed volume contents are intentionally excluded from this pass.
+secure_project_permissions() {
+    local projects_dir="$INSTALL_DIR/projects"
+    [ -d "$projects_dir" ] || return 0
+
+    chown "$INSTALL_USER":"$INSTALL_USER" "$projects_dir" 2>/dev/null || true
+    chmod 750 "$projects_dir" 2>/dev/null || true
+
+    find "$projects_dir" -mindepth 1 -maxdepth 1 -type d \
+        -exec chown "$INSTALL_USER":"$INSTALL_USER" {} \; \
+        -exec chmod 750 {} \; 2>/dev/null || true
+    find "$projects_dir" -type f -name '.env*' \
+        -exec chown "$INSTALL_USER":"$INSTALL_USER" {} \; \
+        -exec chmod 600 {} \; 2>/dev/null || true
+
+    step_ok "Tenant secret file permissions hardened"
+}
+
 # =============================================================================
 # Git Clone
 # =============================================================================
@@ -1891,6 +1910,7 @@ run_update() {
     cd "$INSTALL_DIR"
     sudo -u "$INSTALL_USER" npm ci >> "$LOG_FILE" 2>&1
     step_ok "Workspace dependencies installed"
+    secure_project_permissions
 
     step "Rebuilding backend..."
     cd "$INSTALL_DIR/dashboard/backend"
@@ -2132,6 +2152,7 @@ main() {
 
     install_dependencies
     setup_user_dirs
+    secure_project_permissions
     setup_sudoers
     clone_repo
     setup_python

@@ -195,13 +195,6 @@ export default function Login() {
           </div>
 
           {/* Info */}
-          {/* <div className='mt-6 pt-6 border-t border-border text-center'>
-            <p className='text-sm text-muted-foreground mb-2'>Default credentials:</p>
-            <div className='bg-muted rounded-md p-3'>
-              <p className='font-mono text-sm text-foreground'>admin@multibase.local</p>
-              <p className='font-mono text-sm text-foreground'>admin123</p>
-            </div>
-          </div> */}
         </div>
 
         {/* Footer */}

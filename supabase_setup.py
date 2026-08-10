@@ -182,6 +182,9 @@ class SupabaseProjectGenerator:
         """Write file with Unix line endings (LF only)."""
         content = content.replace('\r\n', '\n')
         path.write_bytes(content.encode('utf-8'))
+        if path.name == ".env":
+            path.chmod(0o600)
+            path.parent.chmod(0o750)
     
     def _fix_realtime_healthcheck(self):
         """Fix Realtime healthcheck to use simpler check."""

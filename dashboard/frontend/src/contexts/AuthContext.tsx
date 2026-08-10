@@ -8,6 +8,7 @@ export interface User {
   isActive: boolean;
   avatar?: string;
   twoFactorEnabled?: boolean;
+  mustChangePassword?: boolean;
   lastLogin?: string;
   createdAt: string;
 }
@@ -21,6 +22,7 @@ export interface AuthContextType {
   register: (email: string, username: string, password: string, captchaToken: string, captchaSolution: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   verifyEmail: (token: string) => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -198,6 +200,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    if (!token) throw new Error('Not authenticated');
+
+    const response = await fetch(`${API_URL}/api/auth/password`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      credentials: 'include',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to change password');
+    }
+
+    await refreshUser();
+  };
+
   const verifyEmail = async (token: string) => {
     try {
       const response = await fetch(`${API_URL}/api/auth/verify-email`, {
@@ -299,6 +322,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     register,
     forgotPassword,
     resetPassword,
+    changePassword,
     verifyEmail,
     deleteAccount,
     refreshUser,

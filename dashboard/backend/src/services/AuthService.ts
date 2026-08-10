@@ -19,6 +19,7 @@ export interface RegisterData {
   username: string;
   password: string;
   role?: 'admin' | 'user' | 'viewer';
+  mustChangePassword?: boolean;
 }
 
 export interface SessionData {
@@ -81,6 +82,7 @@ export class AuthService {
           email: data.email,
           username: data.username,
           passwordHash,
+          mustChangePassword: data.mustChangePassword ?? false,
           role: data.role || 'user',
           isActive: true, // Allow login but require verification? Or disable until verified?
           isEmailVerified: false,
@@ -91,6 +93,7 @@ export class AuthService {
           email: true,
           username: true,
           role: true,
+          mustChangePassword: true,
           isActive: true,
           createdAt: true,
         },
@@ -222,6 +225,7 @@ export class AuthService {
         where: { id: user.id },
         data: {
           passwordHash,
+          mustChangePassword: false,
           resetPasswordToken: null,
           resetPasswordExpires: null,
         },
@@ -313,6 +317,7 @@ export class AuthService {
           email: user.email,
           username: user.username,
           role: user.role,
+          mustChangePassword: user.mustChangePassword,
         },
         session: {
           id: session.id,
@@ -344,6 +349,7 @@ export class AuthService {
               isActive: true,
               avatar: true,
               twoFactorEnabled: true,
+              mustChangePassword: true,
             },
           },
         },
@@ -402,6 +408,7 @@ export class AuthService {
           role: true,
           isActive: true,
           twoFactorEnabled: true,
+          mustChangePassword: true,
           lastLogin: true,
           createdAt: true,
           updatedAt: true,
@@ -427,6 +434,7 @@ export class AuthService {
           username: true,
           role: true,
           isActive: true,
+          mustChangePassword: true,
           lastLogin: true,
           createdAt: true,
           updatedAt: true,
@@ -451,6 +459,7 @@ export class AuthService {
       if (data.isActive !== undefined) updateData.isActive = data.isActive;
       if (data.password) {
         updateData.passwordHash = await this.hashPassword(data.password);
+        updateData.mustChangePassword = false;
       }
 
       const user = await prisma.user.update({
@@ -510,11 +519,38 @@ export class AuthService {
       const passwordHash = await this.hashPassword(password);
       await prisma.user.update({
         where: { id },
-        data: { passwordHash },
+        data: { passwordHash, mustChangePassword: false },
       });
       logger.info(`Password updated for user: ${id}`);
     } catch (error) {
       logger.error('Error updating password:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Change the currently authenticated user's password after verifying the
+   * existing password.
+   */
+  async changePassword(id: string, currentPassword: string, newPassword: string): Promise<void> {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id },
+        select: { passwordHash: true },
+      });
+
+      if (!user || !(await this.verifyPassword(currentPassword, user.passwordHash))) {
+        throw new Error('Current password is incorrect');
+      }
+
+      const passwordHash = await this.hashPassword(newPassword);
+      await prisma.user.update({
+        where: { id },
+        data: { passwordHash, mustChangePassword: false },
+      });
+      logger.info(`Password changed for user: ${id}`);
+    } catch (error) {
+      logger.error('Error changing password:', error);
       throw error;
     }
   }
@@ -529,17 +565,24 @@ export class AuthService {
       });
 
       if (!adminExists) {
-        const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || 'admin123';
+        const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD?.trim();
         const defaultEmail = process.env.DEFAULT_ADMIN_EMAIL || 'admin@multibase.local';
         const defaultUsername = process.env.DEFAULT_ADMIN_USERNAME || 'admin';
+
+        if (!defaultPassword) {
+          logger.error('Cannot create initial admin: DEFAULT_ADMIN_PASSWORD is not configured.');
+          return;
+        }
+
         await this.register({
           email: defaultEmail,
           username: defaultUsername,
           password: defaultPassword,
           role: 'admin',
+          mustChangePassword: true,
         });
         logger.info(`Initial admin user created: ${defaultEmail}`);
-        logger.warn(`Default admin password is set via DEFAULT_ADMIN_PASSWORD env var`);
+        logger.warn('Initial admin password change is required at first login.');
       }
     } catch (error) {
       logger.error('Error creating initial admin:', error);
@@ -974,6 +1017,7 @@ export class AuthService {
           role: user.role,
           avatar: user.avatar,
           twoFactorEnabled: user.twoFactorEnabled,
+          mustChangePassword: user.mustChangePassword,
         },
         session: {
           id: session.id,

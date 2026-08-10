@@ -345,6 +345,7 @@ export class StudioManager {
       logflareApiKey,
       openaiApiKey,
       metaContainer,
+      gatewayPort,
       publicUrl,
     });
 
@@ -439,6 +440,7 @@ export class StudioManager {
     logflareApiKey: string;
     openaiApiKey: string;
     metaContainer: string;
+    gatewayPort: string;
     publicUrl: string;
   }): Record<string, string> {
     const {
@@ -451,6 +453,7 @@ export class StudioManager {
       logflareApiKey,
       openaiApiKey,
       metaContainer,
+      gatewayPort,
       publicUrl,
     } = options;
     const tenantJwtSecret = tenantEnv['JWT_SECRET'] || '';
@@ -466,7 +469,7 @@ export class StudioManager {
       POSTGRES_DB: projectDb,
       DEFAULT_ORGANIZATION_NAME: sharedEnv['SHARED_STUDIO_ORG'] || 'Multibase',
       DEFAULT_PROJECT_NAME: tenantName,
-      SUPABASE_URL: 'http://multibase-nginx-gateway:8000',
+      SUPABASE_URL: `http://multibase-nginx-gateway:${gatewayPort}`,
       SUPABASE_PUBLIC_URL: publicUrl,
       SUPABASE_ANON_KEY: anonKey,
       SUPABASE_SERVICE_KEY: serviceRoleKey,

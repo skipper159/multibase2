@@ -61,6 +61,19 @@ jobs:
             set -e
             cd /opt/multibase/dashboard/backend
 
+            # Harden tenant directories and secret-bearing environment files.
+            # Docker-managed volume contents remain untouched.
+            if [ -d /opt/multibase/projects ]; then
+              chown multibase:multibase /opt/multibase/projects
+              chmod 0750 /opt/multibase/projects
+              find /opt/multibase/projects -mindepth 1 -maxdepth 1 -type d \
+                -exec chown multibase:multibase {} \; \
+                -exec chmod 0750 {} \;
+              find /opt/multibase/projects -type f -name '.env*' \
+                -exec chown multibase:multibase {} \; \
+                -exec chmod 0600 {} \;
+            fi
+
             # --- .env: nur anlegen wenn noch nicht vorhanden ---
             # Die .env wurde von install.sh korrekt generiert (inkl. SESSION_SECRET,
             # REDIS_URL mit Passwort, allen Domains). Niemals überschreiben!

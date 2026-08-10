@@ -62,6 +62,20 @@ export class InstanceManager {
     }
   }
 
+  /** Keep tenant directories and environment files private to the service user. */
+  private secureProjectSecretFiles(projectPath: string): void {
+    try {
+      fs.chmodSync(projectPath, 0o750);
+      for (const entry of fs.readdirSync(projectPath, { withFileTypes: true })) {
+        if (entry.isFile() && entry.name.startsWith('.env')) {
+          fs.chmodSync(path.join(projectPath, entry.name), 0o600);
+        }
+      }
+    } catch (error) {
+      logger.warn(`Could not harden secret file permissions for ${projectPath}:`, error);
+    }
+  }
+
   /**
    * Detect if an instance uses the cloud (shared) or classic stack.
    * Cloud instances have PROJECT_DB in .env and no POSTGRES_PORT.
@@ -706,6 +720,8 @@ export class InstanceManager {
         }
       }
 
+      this.secureProjectSecretFiles(projectPath);
+
       // Apply Resource Limits if specified
       if (request.resourceLimits) {
         try {
@@ -1217,6 +1233,7 @@ ${sslBlock}
 
     // Write back
     writeEnvFile(envPath, mergedEnv);
+    this.secureProjectSecretFiles(projectPath);
     logger.info(`Updated environment variables for ${name}`);
 
     // Invalidate cache

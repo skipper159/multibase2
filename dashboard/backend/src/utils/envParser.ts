@@ -152,7 +152,9 @@ export function writeEnvFile(filePath: string, config: EnvConfig): void {
       lines.push(`${key}=${quotedValue}`);
     });
 
-    fs.writeFileSync(filePath, lines.join('\n'), 'utf8');
+    fs.writeFileSync(filePath, lines.join('\n'), { encoding: 'utf8', mode: 0o600 });
+    // chmod is required as well because mode is ignored when the file already exists.
+    fs.chmodSync(filePath, 0o600);
     logger.info(`Wrote env file: ${filePath}`);
   } catch (error) {
     logger.error(`Error writing env file ${filePath}:`, error);
@@ -168,6 +170,7 @@ export function backupEnvFile(filePath: string): string {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupPath = `${filePath}.bak.${timestamp}`;
     fs.copyFileSync(filePath, backupPath);
+    fs.chmodSync(backupPath, 0o600);
     logger.info(`Created backup: ${backupPath}`);
     return backupPath;
   } catch (error) {

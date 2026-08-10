@@ -183,6 +183,11 @@ DOCKER_SOCKET_LOCATION=/var/run/docker.sock
 """
         
         write_with_unix_newlines(self.env_file, env_content)
+        try:
+            self.env_file.chmod(0o600)
+            self.shared_dir.chmod(0o750)
+        except OSError as exc:
+            print(f"Warning: could not harden shared environment permissions: {exc}")
         print(f"✅ .env.shared geschrieben: {self.env_file}")
         print(f"")
         print(f"📋 Übersicht:")
