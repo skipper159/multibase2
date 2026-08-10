@@ -27,7 +27,7 @@ jobs:
           ARGS: '-rltDzvO'
 
       - name: Fix Ownership After Rsync
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.VPS2_HOST }}
           username: ${{ secrets.VPS2_USER }}
@@ -52,7 +52,7 @@ jobs:
             echo "✓ Ownership fixed (PostgreSQL data dir preserved)"
 
       - name: Post-Deployment Commands (VPS 2)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.VPS2_HOST }}
           username: ${{ secrets.VPS2_USER }}

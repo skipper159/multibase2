@@ -71,7 +71,7 @@ jobs:
           ARGS: '-rltgoDzvO'
 
       - name: Post-Deployment Commands (VPS 2)
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.VPS2_HOST }}
           username: ${{ secrets.VPS2_USER }}
