@@ -832,7 +832,7 @@ class OpenAIAdapter implements ProviderAdapter {
       model: model || 'gpt-5-mini',
       messages: messages as any,
       tools: openaiTools,
-      max_tokens: 2048,
+      max_completion_tokens: 2048,
     });
 
     const choice = response.choices[0];
