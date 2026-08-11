@@ -606,7 +606,7 @@ install_dependencies() {
     apt-get update -qq >> "$LOG_FILE" 2>&1
 
     # Base tools
-    local base_pkgs="curl wget git openssl build-essential software-properties-common"
+    local base_pkgs="curl wget git openssl rsync openssh-client build-essential software-properties-common"
     for pkg in $base_pkgs; do
         if dpkg -s "$pkg" &>/dev/null; then
             step_ok "$pkg (already installed)"
@@ -918,6 +918,41 @@ build_frontend() {
 
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
     step_ok "Frontend built"
+}
+
+# Deploy the freshly built frontend to the separate frontend host when this
+# backend installation is configured for split hosting. The web updater already
+# supports the same VPS1_* variables; keeping this path in --update makes the
+# SSH installer behave consistently.
+deploy_split_frontend() {
+    local backend_env="$INSTALL_DIR/dashboard/backend/.env"
+    [ -f "$backend_env" ] || return 0
+
+    local frontend_serve
+    frontend_serve=$(grep -m1 '^FRONTEND_SERVE=' "$backend_env" | cut -d= -f2- | tr -d '"' || true)
+    [ "$frontend_serve" = "split" ] || return 0
+
+    local vps1_host vps1_user vps1_key vps1_path
+    vps1_host=$(grep -m1 '^VPS1_HOST=' "$backend_env" | cut -d= -f2- | tr -d '"' || true)
+    vps1_user=$(grep -m1 '^VPS1_USER=' "$backend_env" | cut -d= -f2- | tr -d '"' || true)
+    vps1_key=$(grep -m1 '^VPS1_KEY=' "$backend_env" | cut -d= -f2- | tr -d '"' || true)
+    vps1_path=$(grep -m1 '^VPS1_FRONTEND_PATH=' "$backend_env" | cut -d= -f2- | tr -d '"' || true)
+
+    if [ -z "$vps1_host" ] || [ -z "$vps1_user" ] || [ -z "$vps1_key" ] || [ -z "$vps1_path" ]; then
+        log_warning "FRONTEND_SERVE=split but VPS1 deployment variables are incomplete; frontend was built locally but not deployed."
+        return 0
+    fi
+
+    if [ ! -r "$vps1_key" ]; then
+        error_exit "VPS1 SSH key is not readable: $vps1_key"
+    fi
+
+    step "Deploying frontend to VPS1..."
+    sudo -u "$INSTALL_USER" -H rsync -rltDz --delete \
+        -e "ssh -i ${vps1_key} -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=15" \
+        "$INSTALL_DIR/dashboard/frontend/dist/" \
+        "${vps1_user}@${vps1_host}:${vps1_path%/}/" >> "$LOG_FILE" 2>&1
+    step_ok "Frontend deployed to VPS1 (${vps1_host}:${vps1_path})"
 }
 
 # =============================================================================
@@ -1916,7 +1951,7 @@ run_update() {
         error_exit "No installation found at $INSTALL_DIR"
     fi
 
-    TOTAL_STEPS=8
+    TOTAL_STEPS=9
     CURRENT_STEP=0
 
     step "Pulling latest changes..."
@@ -1969,6 +2004,7 @@ ENVEOF
         step_ok "Frontend .env.production updated (VITE_API_URL=${_backend_url})"
     fi
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
+    deploy_split_frontend
     configure_direct_docker_access
 
     step "Restarting services..."

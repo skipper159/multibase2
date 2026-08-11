@@ -13,6 +13,7 @@ Release date: 2026-08-11
 
 - The installer now generates `DOCKER_ACCESS_MODE=socket` and `DOCKER_SOCKET_PATH` instead of configuring `DOCKER_HOST=tcp://127.0.0.1:2378`.
 - Existing installations are migrated automatically by `install.sh --update`.
+- In split hosting mode, `install.sh --update` now synchronizes the generated frontend bundle to the configured VPS1 target via `rsync`.
 - The installer verifies Docker access for the `multibase` service user with `docker info` and an actual `docker exec` smoke test.
 - Legacy `multibase-docker-proxy` containers are removed during update, fresh installation, and uninstall.
 - The shared Compose stack no longer deploys or advertises a Docker proxy service.
@@ -48,5 +49,6 @@ The update rebuilds the backend and frontend, applies Prisma migrations, verifie
 - ✅ Frontend production build
 - ✅ 55 backend tests
 - ✅ Installer and uninstaller shell syntax checks
+- ✅ Split-hosting frontend transfer to VPS1 verified against the configured target
 - ✅ Shared Compose configuration validation
 - ✅ Live local `docker exec` smoke test against `multibase-db`
