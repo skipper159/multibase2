@@ -237,10 +237,15 @@ export function useAiChat() {
           const data = line.slice(6).trim();
           if (data === '[DONE]') continue;
 
+          let chunk: StreamChunk;
           try {
-            const chunk: StreamChunk = JSON.parse(data);
+            chunk = JSON.parse(data);
+          } catch {
+            // Ignore malformed SSE payloads, but never swallow application errors.
+            continue;
+          }
 
-            switch (chunk.type) {
+          switch (chunk.type) {
               case 'text':
                 if (chunk.content) {
                   setStreamingMessage(chunk.content);
@@ -260,9 +265,6 @@ export function useAiChat() {
                 throw new Error(chunk.error || 'AI error');
               case 'done':
                 break;
-            }
-          } catch (e) {
-            // Ignore parse errors
           }
         }
       }

@@ -41,6 +41,18 @@ export function createAiAgentRoutes(aiAgentService: AiAgentService, prisma: Pris
     return session?.user || null;
   }
 
+  async function listOpenAiModels(apiKey: string): Promise<{ id: string; name: string }[]> {
+    const { default: OpenAI } = await import('openai');
+    const client = new OpenAI({ apiKey });
+    const response = await client.models.list();
+    const excluded = /(?:audio|transcri|realtime|image|embedding|moderation|whisper|tts|search-preview)/i;
+
+    return response.data
+      .filter((model) => /^(gpt-|o[134]-)/i.test(model.id) && !excluded.test(model.id))
+      .map((model) => ({ id: model.id, name: model.id }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   // =====================================================
   // AI API Key Management
   // =====================================================
@@ -90,6 +102,21 @@ export function createAiAgentRoutes(aiAgentService: AiAgentService, prisma: Pris
         return res
           .status(400)
           .json({ error: 'Invalid provider. Must be openai, gemini, anthropic, or openrouter' });
+      }
+
+      if (provider === 'openai') {
+        try {
+          const availableModels = await listOpenAiModels(apiKey);
+          if (availableModels.length === 0) {
+            return res.status(400).json({ error: 'No compatible OpenAI chat models are available for this API key' });
+          }
+          if (model && !availableModels.some((availableModel) => availableModel.id === model)) {
+            return res.status(400).json({ error: `The selected OpenAI model is not available: ${model}` });
+          }
+        } catch (error: any) {
+          logger.warn('OpenAI API key validation failed:', error?.message || error);
+          return res.status(400).json({ error: 'The OpenAI API key could not be validated. Please check the key and project permissions.' });
+        }
       }
 
       const encrypted = encrypt(apiKey);
@@ -230,17 +257,12 @@ export function createAiAgentRoutes(aiAgentService: AiAgentService, prisma: Pris
 
       switch (config.provider) {
         case 'openai':
-          models = [
-            { id: 'gpt-5.5', name: 'GPT-5.5' },
-            { id: 'gpt-5.4', name: 'GPT-5.4' },
-            { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini' },
-            { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano' },
-            { id: 'gpt-5-mini', name: 'GPT-5 Mini' },
-            { id: 'gpt-5-nano', name: 'GPT-5 Nano' },
-            { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol' },
-            { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra' },
-            { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna' },
-          ];
+          try {
+            models = await listOpenAiModels(config.apiKey);
+          } catch (error: any) {
+            logger.warn('Failed to list OpenAI models:', error?.message || error);
+            return res.status(502).json({ error: 'OpenAI models could not be loaded. Please check the API key and project permissions.' });
+          }
           break;
         case 'anthropic':
           models = [

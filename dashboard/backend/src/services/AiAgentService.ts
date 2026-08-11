@@ -829,7 +829,7 @@ class OpenAIAdapter implements ProviderAdapter {
     }));
 
     const response = await client.chat.completions.create({
-      model: model || 'gpt-5.4-mini',
+      model: model || 'gpt-5-mini',
       messages: messages as any,
       tools: openaiTools,
       max_tokens: 2048,

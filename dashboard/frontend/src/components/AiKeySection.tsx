@@ -9,15 +9,12 @@ const AI_PROVIDERS = [
     id: 'openai',
     name: 'OpenAI',
     models: [
-      { id: 'gpt-5.5', name: 'GPT-5.5', description: 'Frontier quality' },
-      { id: 'gpt-5.4', name: 'GPT-5.4', description: 'Professional quality at lower cost' },
-      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', description: 'Strong coding at low cost' },
-      { id: 'gpt-5.4-nano', name: 'GPT-5.4 Nano', description: 'Fastest, cheapest 5.4 tier' },
+      { id: 'gpt-5', name: 'GPT-5', description: 'Frontier quality' },
       { id: 'gpt-5-mini', name: 'GPT-5 Mini', description: 'Very low-cost tool calling' },
       { id: 'gpt-5-nano', name: 'GPT-5 Nano', description: 'Lowest-cost GPT-5 tier' },
-      { id: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: 'Frontier capability' },
-      { id: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: 'Balanced quality and cost' },
-      { id: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: 'Fast, cost-efficient' },
+      { id: 'gpt-4.1', name: 'GPT-4.1', description: 'Strong non-reasoning model' },
+      { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Fast and cost-efficient' },
+      { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast multimodal model' },
     ],
     placeholder: 'sk-...',
     color: 'emerald',
@@ -85,7 +82,7 @@ export default function AiKeySection() {
   const deleteKey = useDeleteAiKey();
 
   const [provider, setProvider] = useState('openai');
-  const [model, setModel] = useState('gpt-5.4-mini');
+  const [model, setModel] = useState('gpt-5-mini');
   const [apiKey, setApiKey] = useState('');
 
   const selectedProvider = AI_PROVIDERS.find((p) => p.id === provider);
