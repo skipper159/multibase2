@@ -17,10 +17,6 @@ export const serviceLabels: Record<string, string> = {
   meta: 'Postgres Meta',
   pooler: 'Pooler / Supavisor',
   'nginx-gateway': 'Nginx Gateway',
-  'docker-proxy': 'Docker Socket Proxy',
-  'docker_proxy': 'Docker Socket Proxy',
-  'multibase-docker-proxy': 'Docker Socket Proxy',
-  dockerproxy: 'Docker Socket Proxy',
 };
 
 const serviceDescriptions: Record<string, string> = {
@@ -32,10 +28,6 @@ const serviceDescriptions: Record<string, string> = {
   meta: 'Postgres Meta API for schema, table, and database information in Studio.',
   pooler: 'Supavisor/PgBouncer for connection pooling and efficient database connections.',
   'nginx-gateway': 'Central HTTP gateway for API and Storage requests from instance projects.',
-  'docker-proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
-  'docker_proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
-  'multibase-docker-proxy': 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
-  dockerproxy: 'Secures access to the host Docker daemon via a restricted TCP proxy on 127.0.0.1:2378.',
 };
 
 export default function SharedServicesPage({ services }: SharedServicesPageProps) {
@@ -100,7 +92,7 @@ export default function SharedServicesPage({ services }: SharedServicesPageProps
                   <div>
                     <h3 className='font-semibold'>{serviceLabels[service.name] || service.name}</h3>
                     <p className='text-xs text-muted-foreground font-mono'>{service.containerName || `multibase-${service.name}`}</p>
-                    <p className='text-sm text-muted-foreground mt-2 max-w-xl'>
+                    <p className='mt-2 min-h-10 max-w-xl text-sm text-muted-foreground'>
                       {serviceDescriptions[service.name] || 'Shared service of the central infrastructure.'}
                     </p>
                   </div>
@@ -142,15 +134,31 @@ export default function SharedServicesPage({ services }: SharedServicesPageProps
                 </div>
                 {service.ports && service.ports.length > 0 ? (
                   <div className='space-y-2'>
-                    {service.ports.map((port) => (
-                      <div key={`${port.label}-${port.container}`} className='flex items-center justify-between gap-3 text-sm'>
-                        <span className='text-muted-foreground'>{port.label}</span>
-                        <span className='font-mono text-right'>
-                          {port.public && port.host ? `localhost:${port.host}` : `internal:${port.container}`}
-                          <span className='ml-2 text-xs text-muted-foreground uppercase'>{port.protocol}</span>
-                        </span>
-                      </div>
-                    ))}
+                    {service.ports.map((port) => {
+                      const hostEndpoint = port.host
+                        ? `${port.hostAddress || '0.0.0.0'}:${port.host}`
+                        : 'Docker-internal';
+                      return (
+                        <div
+                          key={`${port.label}-${port.container}-${port.hostAddress || 'internal'}-${port.host || ''}`}
+                          className={`rounded-md border px-3 py-2.5 ${
+                            port.actual ? 'border-border bg-muted/20' : 'border-amber-500/30 bg-amber-500/5'
+                          }`}
+                        >
+                          <div className='flex items-center justify-between gap-3'>
+                            <span className='font-medium'>{port.label}</span>
+                            <span className={`text-xs font-medium ${port.actual ? 'text-brand-400' : 'text-amber-400'}`}>
+                              {port.actual ? 'Active' : 'Port binding missing'}
+                            </span>
+                          </div>
+                          <div className='mt-1.5 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3'>
+                            <span>Host: <span className='font-mono text-foreground'>{hostEndpoint}</span></span>
+                            <span>Container: <span className='font-mono text-foreground'>{port.container}/tcp</span></span>
+                            <span>Internet: <span className={port.public ? 'text-red-400' : 'text-brand-400'}>{port.public ? 'Public' : 'Not public'}</span></span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className='text-sm text-muted-foreground'>No exposed port configured.</p>

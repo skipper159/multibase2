@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Database, Trash2 } from 'lucide-react';
+import { AlertCircle, Database, Loader2, RefreshCw, Trash2 } from 'lucide-react';
 import { useDeleteDatabase, useSharedDatabases } from '../hooks/useShared';
 
 export default function SharedDatabasesPage() {
-  const { data: dbData } = useSharedDatabases();
+  const { data: dbData, isLoading, isError, error, refetch } = useSharedDatabases();
   const deleteMutation = useDeleteDatabase();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const databases = dbData?.databases ?? [];
 
   return (
     <div className='bg-card border rounded-lg p-6'>
@@ -17,10 +18,31 @@ export default function SharedDatabasesPage() {
           </h2>
           <p className='text-sm text-muted-foreground mt-1'>Project databases hosted in the shared PostgreSQL cluster.</p>
         </div>
-        <span className='text-sm text-muted-foreground'>{dbData?.count || 0} project databases</span>
+        <span className='text-sm text-muted-foreground'>{dbData?.count ?? 0} project databases</span>
       </div>
 
-      {dbData && dbData.databases.length > 0 ? (
+      {isLoading ? (
+        <div className='flex flex-col items-center justify-center py-12 text-center'>
+          <Loader2 className='w-8 h-8 animate-spin text-primary mb-3' />
+          <p className='text-sm text-muted-foreground'>Loading project databases…</p>
+        </div>
+      ) : isError ? (
+        <div className='flex flex-col items-center justify-center py-12 text-center'>
+          <AlertCircle className='w-10 h-10 text-red-400/80 mb-3' />
+          <p className='text-sm font-medium text-foreground'>Unable to load project databases</p>
+          <p className='text-xs text-muted-foreground mt-1 max-w-lg'>
+            {error instanceof Error ? error.message : 'The shared database API returned an error.'}
+          </p>
+          <button
+            type='button'
+            onClick={() => refetch()}
+            className='mt-4 inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-medium text-foreground hover:bg-white/15'
+          >
+            <RefreshCw className='w-3.5 h-3.5' />
+            Retry
+          </button>
+        </div>
+      ) : databases.length > 0 ? (
         <div className='overflow-x-auto'>
           <table className='w-full'>
             <thead>
@@ -32,7 +54,7 @@ export default function SharedDatabasesPage() {
               </tr>
             </thead>
             <tbody>
-              {dbData.databases.map((db) => (
+              {databases.map((db) => (
                 <tr key={db.name} className='border-b border-white/5 hover:bg-white/5 transition-colors'>
                   <td className='py-3 px-4 font-mono text-sm'>{db.name}</td>
                   <td className='py-3 px-4 text-sm text-muted-foreground'>{db.projectName}</td>

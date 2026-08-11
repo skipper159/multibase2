@@ -112,7 +112,7 @@ services:
     image: ${SHARED_NGINX_GATEWAY_IMAGE:-nginx:1.29.1-alpine}
     restart: unless-stopped
     ports:
-      - '${SHARED_GATEWAY_PORT:-8000}:8000/tcp'
+      - '${NGINX_BIND_HOST:-127.0.0.1}:${SHARED_GATEWAY_PORT:-8000}:8000/tcp'
       # Tenant-Ports werden dynamisch über docker-compose.override.yml verwaltet.
       # setup_shared.py::add_tenant_port() schreibt die override-Datei automatisch.
       # NICHT manuell hier eintragen – führt zu doppelten Port-Bindings!
@@ -325,32 +325,6 @@ services:
         '-c',
         '/app/bin/migrate && /app/bin/supavisor eval "$$(cat /etc/pooler/pooler.exs)" && /app/bin/server',
       ]
-    networks:
-      - multibase-shared
-
-  # ============================================================
-  # Shared Docker Socket Proxy - Sichere Docker API Schnittstelle
-  # ============================================================
-  docker-proxy:
-    container_name: multibase-docker-proxy
-    image: tecnativa/docker-socket-proxy:latest
-    restart: unless-stopped
-    ports:
-      - '127.0.0.1:${DOCKER_PROXY_PORT:-2378}:2375'
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    environment:
-      CONTAINERS: 1
-      POST: 1
-      IMAGES: 1
-      NETWORKS: 1
-      INFO: 1
-      VERSION: 1
-      PING: 1
-      EVENTS: 1
-      VOLUMES: 0
-      BUILD: 0
-      PRIVILEGED: 0
     networks:
       - multibase-shared
 

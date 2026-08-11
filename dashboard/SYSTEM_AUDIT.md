@@ -125,7 +125,8 @@ NODE_ENV=production
 DATABASE_URL="postgresql://multibase:secure_password@localhost:5432/multibase"
 
 # Docker
-DOCKER_HOST=/var/run/docker.sock
+DOCKER_ACCESS_MODE=socket
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Security
 SESSION_SECRET=<32-char-secure-string>

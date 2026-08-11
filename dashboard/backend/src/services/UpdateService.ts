@@ -16,8 +16,6 @@
 
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
 import DockerManager from './DockerManager';
@@ -34,12 +32,12 @@ import {
   getImageUpdateDecision,
 } from './ImageRegistryService';
 import { logger } from '../utils/logger';
+import { getSharedComposeArgs } from '../utils/sharedCompose';
 import { SHARED_SERVICES } from '../types';
 import { createAuditLogEntry } from '../middleware/auditLog';
 import { AUDIT_ACTIONS } from '../constants/auditActions';
 import prisma from '../lib/prisma';
-
-const execFileAsync = promisify(execFile);
+import { getDockerCliEnvironment, runDockerCommand } from '../utils/dockerCommand';
 
 export interface GitHubReleaseItem {
   version: string;
@@ -172,10 +170,7 @@ export class UpdateService extends EventEmitter {
     string,
     { digest: string | null; error: string | null; checkedAt: Date }
   >();
-  private readonly registryTagCache = new Map<
-    string,
-    { tag: string | null; checkedAt: Date }
-  >();
+  private readonly registryTagCache = new Map<string, { tag: string | null; checkedAt: Date }>();
   private imageMatrix: ImageMatrix | null = null;
   private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -216,7 +211,8 @@ export class UpdateService extends EventEmitter {
       if (!legacyEnvironmentApproval) {
         return {
           status: 'blocked',
-          reason: 'Security gate status could not be verified because the approval store is unavailable.',
+          reason:
+            'Security gate status could not be verified because the approval store is unavailable.',
           source: 'none',
           approvedAt: null,
           expiresAt: null,
@@ -238,7 +234,8 @@ export class UpdateService extends EventEmitter {
 
     return {
       status: 'blocked',
-      reason: 'Production image updates remain blocked until an administrator approves a maintenance window.',
+      reason:
+        'Production image updates remain blocked until an administrator approves a maintenance window.',
       source: 'none',
       approvedAt: null,
       expiresAt: null,
@@ -391,7 +388,7 @@ export class UpdateService extends EventEmitter {
               changelog: item.body || null,
               isLatest: index === 0,
             }))
-            .filter((r) => !!r.version);
+            .filter(r => !!r.version);
         }
       }
     } catch {
@@ -424,19 +421,24 @@ export class UpdateService extends EventEmitter {
     const matrix = this.loadMatrix();
     const shortName = service.replace(/^multibase-/, '').replace(/^supabase-/, '');
     const preferredNames = [
-      ...(category === 'tenant' ? [`tenant-${shortName}`, `shared-${shortName}`] : [`shared-${shortName}`, `tenant-${shortName}`]),
+      ...(category === 'tenant'
+        ? [`tenant-${shortName}`, `shared-${shortName}`]
+        : [`shared-${shortName}`, `tenant-${shortName}`]),
       service,
       shortName,
     ];
     for (const name of preferredNames) {
       const definition = matrix.images[name];
-      if (definition && normalizeRepository(definition.repository) === normalizeRepository(repository)) {
+      if (
+        definition &&
+        normalizeRepository(definition.repository) === normalizeRepository(repository)
+      ) {
         return definition;
       }
     }
     return (
       Object.values(matrix.images).find(
-        (definition) => normalizeRepository(definition.repository) === normalizeRepository(repository)
+        definition => normalizeRepository(definition.repository) === normalizeRepository(repository)
       ) || null
     );
   }
@@ -498,13 +500,20 @@ export class UpdateService extends EventEmitter {
     }
   }
 
-  private classifyContainer(containerName: string, labels?: Record<string, string>): DockerServiceInfo['category'] {
+  private classifyContainer(
+    containerName: string,
+    labels?: Record<string, string>
+  ): DockerServiceInfo['category'] {
     if ((SHARED_SERVICES as readonly string[]).includes(containerName)) return 'shared';
     if (/^multibase-(studio|meta)-/.test(containerName)) return 'temporary';
-    if (labels?.['com.docker.compose.project'] && labels['com.docker.compose.project'] !== 'multibase-shared') {
+    if (
+      labels?.['com.docker.compose.project'] &&
+      labels['com.docker.compose.project'] !== 'multibase-shared'
+    ) {
       return 'tenant';
     }
-    if (/^(multibase-(redis|portainer)|redis|portainer)/.test(containerName)) return 'infrastructure';
+    if (/^(multibase-(redis|portainer)|redis|portainer)/.test(containerName))
+      return 'infrastructure';
     return 'other';
   }
 
@@ -552,25 +561,32 @@ export class UpdateService extends EventEmitter {
       localImageId = inspect.Image || localImageId;
       image = inspect.Config.Image || image;
     } catch (error) {
-      logger.warn(`Could not inspect Docker container ${containerName}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Could not inspect Docker container ${containerName}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
     try {
-      const imageInspect = localImageId ? await this.dockerManager.inspectImage(localImageId) : null;
+      const imageInspect = localImageId
+        ? await this.dockerManager.inspectImage(localImageId)
+        : null;
       const repoDigests = imageInspect?.RepoDigests ?? [];
-      localDigest = repoDigests.find((value) => {
-        const [repository] = value.split('@', 1);
-        return normalizeRepository(repository) === normalizeRepository(parsed.repository);
-      })?.split('@')[1] ?? null;
+      localDigest =
+        repoDigests
+          .find(value => {
+            const [repository] = value.split('@', 1);
+            return normalizeRepository(repository) === normalizeRepository(parsed.repository);
+          })
+          ?.split('@')[1] ?? null;
 
       // Update and rollback overrides can leave Config.Image as repo@digest.
       // Recover a stable local tag so the status check does not report a
       // permanent false update for an otherwise correct image.
       if (parsed.digest && imageInspect?.RepoTags) {
-        const taggedImages = imageInspect.RepoTags
-          .map((reference) => parseImageReference(reference))
-          .filter((reference) =>
-            normalizeRepository(reference.repository) === normalizeRepository(parsed.repository) &&
-            reference.tag !== 'latest'
+        const taggedImages = imageInspect.RepoTags.map(reference => parseImageReference(reference))
+          .filter(
+            reference =>
+              normalizeRepository(reference.repository) ===
+                normalizeRepository(parsed.repository) && reference.tag !== 'latest'
           )
           .sort((left, right) => compareImageTags(right.tag, left.tag));
         const taggedImage = taggedImages[0];
@@ -580,7 +596,9 @@ export class UpdateService extends EventEmitter {
         }
       }
     } catch (error) {
-      logger.warn(`Could not inspect Docker image ${localImageId}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Could not inspect Docker image ${localImageId}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     const checkedAt = new Date();
@@ -616,7 +634,11 @@ export class UpdateService extends EventEmitter {
       };
     }
 
-    const observation = await this.getRegistryObservation(parsed.repository, parsed.tag, forceRegistryRefresh);
+    const observation = await this.getRegistryObservation(
+      parsed.repository,
+      parsed.tag,
+      forceRegistryRefresh
+    );
     const latestRegistryTag = await this.getLatestRegistryTag(
       parsed.repository,
       parsed.tag,
@@ -632,11 +654,17 @@ export class UpdateService extends EventEmitter {
       parsed.tag === targetTag
         ? observation
         : await this.getRegistryObservation(parsed.repository, targetTag, forceRegistryRefresh);
-    const digestMatches = localDigest !== null && observation.digest !== null && localDigest === observation.digest;
+    const digestMatches =
+      localDigest !== null && observation.digest !== null && localDigest === observation.digest;
     const targetDigestMatches =
-      localDigest !== null && targetObservation.digest !== null && localDigest === targetObservation.digest;
+      localDigest !== null &&
+      targetObservation.digest !== null &&
+      localDigest === targetObservation.digest;
     const { tagOutdated, digestOutdated, updateAvailable } = getImageUpdateDecision(
-      parsed.tag, targetTag, localDigest, targetObservation.digest
+      parsed.tag,
+      targetTag,
+      localDigest,
+      targetObservation.digest
     );
     const registryErrorForCurrent = observation.error;
     const registryErrorForTarget = targetObservation.error;
@@ -650,12 +678,12 @@ export class UpdateService extends EventEmitter {
         : registryErrorForTarget
           ? 'registry_unreachable'
           : tagOutdated
-          ? 'tag_outdated'
-          : registryErrorForCurrent
-            ? 'registry_unreachable'
-            : digestOutdated
-              ? 'digest_mismatch'
-              : 'current';
+            ? 'tag_outdated'
+            : registryErrorForCurrent
+              ? 'registry_unreachable'
+              : digestOutdated
+                ? 'digest_mismatch'
+                : 'current';
 
     return {
       service,
@@ -673,13 +701,17 @@ export class UpdateService extends EventEmitter {
       targetDigest: targetObservation.digest,
       latestApprovedTag: definition.tag,
       latestApprovedDigest:
-        targetObservation.digest ?? (targetTag === definition.tag ? definition.digest ?? null : null),
+        targetObservation.digest ??
+        (targetTag === definition.tag ? (definition.digest ?? null) : null),
       updateAvailable,
       digestMatches,
       managed: true,
       updatePolicy: definition.updatePolicy,
       updateStatus,
-      risk: definition.updatePolicy === 'manual' || Boolean(registryError) || !targetDigestMatches ? 'high' : 'low',
+      risk:
+        definition.updatePolicy === 'manual' || Boolean(registryError) || !targetDigestMatches
+          ? 'high'
+          : 'low',
       checkError: registryError,
       checkedAt: registryError ? observation.checkedAt : checkedAt,
       status,
@@ -690,7 +722,7 @@ export class UpdateService extends EventEmitter {
     const containers = await this.dockerManager.listAllContainers();
     const knownNames = new Set<string>();
     const services = await Promise.all(
-      containers.map(async (container) => {
+      containers.map(async container => {
         const name = (container.Names[0] || container.Id).replace(/^\//, '');
         knownNames.add(name);
         return this.inspectDockerContainer(container, forceRegistryRefresh);
@@ -717,10 +749,10 @@ export class UpdateService extends EventEmitter {
   ): Promise<DockerServiceInfo[]> {
     const containers = await this.dockerManager.listProjectContainers(instanceName);
     const services = await Promise.all(
-      containers.map((container) => this.inspectDockerContainer(container, forceRegistryRefresh))
+      containers.map(container => this.inspectDockerContainer(container, forceRegistryRefresh))
     );
     return services
-      .filter((service) => service.category === 'tenant')
+      .filter(service => service.category === 'tenant')
       .sort((left, right) => left.service.localeCompare(right.service));
   }
 
@@ -762,14 +794,15 @@ export class UpdateService extends EventEmitter {
     };
 
     const allDocker = await this.getDockerServiceInfo(forceRefresh);
-    const docker = allDocker.filter((service) => service.category === 'shared');
-    const tenantDocker = allDocker.filter((service) => service.category !== 'shared');
+    const docker = allDocker.filter(service => service.category === 'shared');
+    const tenantDocker = allDocker.filter(service => service.category !== 'shared');
 
     const securityGate = await this.getSecurityGateStatus();
-    const latestRegistryCheck = allDocker
-      .map((service) => service.checkedAt)
-      .filter((value): value is Date => value instanceof Date)
-      .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
+    const latestRegistryCheck =
+      allDocker
+        .map(service => service.checkedAt)
+        .filter((value): value is Date => value instanceof Date)
+        .sort((left, right) => right.getTime() - left.getTime())[0] ?? null;
 
     const status: UpdateStatus = {
       multibase,
@@ -818,9 +851,24 @@ export class UpdateService extends EventEmitter {
     const gitLabel = targetVersion ? `install v${targetVersion}` : 'git pull';
     const steps =
       this.frontendServe === 'local'
-        ? [gitLabel, 'backend install', 'database migrations', 'backend build', 'frontend build', 'restart']
+        ? [
+            gitLabel,
+            'backend install',
+            'database migrations',
+            'backend build',
+            'frontend build',
+            'restart',
+          ]
         : canDeploySplit
-          ? [gitLabel, 'backend install', 'database migrations', 'backend build', 'frontend build', 'frontend deploy', 'restart']
+          ? [
+              gitLabel,
+              'backend install',
+              'database migrations',
+              'backend build',
+              'frontend build',
+              'frontend deploy',
+              'restart',
+            ]
           : [gitLabel, 'backend install', 'database migrations', 'backend build', 'restart'];
     this.emit('update:start', { type: 'multibase', steps, targetVersion: targetVersion ?? null });
 
@@ -940,7 +988,7 @@ export class UpdateService extends EventEmitter {
     this._isInProgress = true;
 
     const sharedDir = path.join(this.rootDir, 'shared');
-    const composeArgs = this.getComposeArgs(sharedDir);
+    const composeArgs = getSharedComposeArgs(sharedDir);
     const updateId = `docker-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     const previous = new Map<string, DockerServiceInfo>();
     const results: ImageUpdateResult[] = [];
@@ -948,17 +996,27 @@ export class UpdateService extends EventEmitter {
 
     this.emit('update:start', {
       type: 'docker',
-      services: [...services].sort((left, right) => this.updateOrder(left) - this.updateOrder(right)),
+      services: [...services].sort(
+        (left, right) => this.updateOrder(left) - this.updateOrder(right)
+      ),
     });
 
     try {
-      const preflight = await this.preflightDockerUpdate(services, composeArgs, sharedDir, options, updateId);
-      preflight.services.forEach((service) => previous.set(service.service, service));
+      const preflight = await this.preflightDockerUpdate(
+        services,
+        composeArgs,
+        sharedDir,
+        options,
+        updateId
+      );
+      preflight.services.forEach(service => previous.set(service.service, service));
       results.push(...preflight.skipped);
-      preflight.skipped.forEach((result) => this.emit('update:serviceResult', result));
+      preflight.skipped.forEach(result => this.emit('update:serviceResult', result));
 
-      const servicesToUpdate = preflight.services.filter((service) => service.updateAvailable || options.force);
-      for (const service of preflight.services.filter((entry) => !servicesToUpdate.includes(entry))) {
+      const servicesToUpdate = preflight.services.filter(
+        service => service.updateAvailable || options.force
+      );
+      for (const service of preflight.services.filter(entry => !servicesToUpdate.includes(entry))) {
         const result: ImageUpdateResult = {
           service: service.service,
           status: 'skipped',
@@ -969,23 +1027,31 @@ export class UpdateService extends EventEmitter {
       }
 
       const orderedServices = servicesToUpdate
-        .map((service) => service.service)
+        .map(service => service.service)
         .sort((left, right) => this.updateOrder(left) - this.updateOrder(right));
       if (orderedServices.length === 0) {
         const outcome = this.getUpdateOutcome(results);
         this.cachedStatus = null;
         this.emit('update:complete', {
-          type: 'docker', services: [], updateId, outcome, results,
+          type: 'docker',
+          services: [],
+          updateId,
+          outcome,
+          results,
         });
         return;
       }
-      const imageOverrides = servicesToUpdate.map((service) => {
+      const imageOverrides = servicesToUpdate.map(service => {
         const composeService = service.service.replace(/^multibase-/, '');
         return `  ${composeService}:\n    image: ${this.getTargetImage(service)}`;
       });
       fs.writeFileSync(imageOverridePath, `services:\n${imageOverrides.join('\n')}\n`);
       const updateComposeArgs = [...composeArgs, '-f', path.relative(sharedDir, imageOverridePath)];
-      const targetConfig = await this.runCompose([...updateComposeArgs, 'config'], sharedDir, false);
+      const targetConfig = await this.runCompose(
+        [...updateComposeArgs, 'config'],
+        sharedDir,
+        false
+      );
       if (!targetConfig.stdout.includes('services:')) {
         throw new Error('Preflight failed: the target Compose configuration is empty.');
       }
@@ -1004,7 +1070,10 @@ export class UpdateService extends EventEmitter {
           serviceTouched = true;
           await this.runCompose([...updateComposeArgs, 'stop', composeService], sharedDir);
           this.emit('update:log', { line: `[${service}] Starting with new image...` });
-          await this.runCompose([...updateComposeArgs, 'up', '-d', '--no-deps', composeService], sharedDir);
+          await this.runCompose(
+            [...updateComposeArgs, 'up', '-d', '--no-deps', composeService],
+            sharedDir
+          );
           await this.waitForServiceHealthy(service, 60_000);
 
           const result: ImageUpdateResult = {
@@ -1017,10 +1086,18 @@ export class UpdateService extends EventEmitter {
           this.emit('update:serviceResult', result);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          this.emit('update:log', { line: `[${service}] Update failed: ${message}. Starting rollback...` });
-          const rolledBack = !serviceTouched || await this.rollbackDockerUpdate(
-            [service], previous, composeArgs, sharedDir, updateId
-          );
+          this.emit('update:log', {
+            line: `[${service}] Update failed: ${message}. Starting rollback...`,
+          });
+          const rolledBack =
+            !serviceTouched ||
+            (await this.rollbackDockerUpdate(
+              [service],
+              previous,
+              composeArgs,
+              sharedDir,
+              updateId
+            ));
           const result: ImageUpdateResult = {
             service,
             status: rolledBack ? 'rolled_back' : 'rollback_failed',
@@ -1053,7 +1130,13 @@ export class UpdateService extends EventEmitter {
       });
 
       this.cachedStatus = null;
-      this.emit('update:complete', { type: 'docker', services: orderedServices, updateId, outcome, results });
+      this.emit('update:complete', {
+        type: 'docker',
+        services: orderedServices,
+        updateId,
+        outcome,
+        results,
+      });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       await createAuditLogEntry({
@@ -1061,7 +1144,7 @@ export class UpdateService extends EventEmitter {
         action: AUDIT_ACTIONS.DOCKER_UPDATE_COMPLETED,
         resource: 'shared-services',
         details: {
-          services: services.map((s) => ({ service: s })),
+          services: services.map(s => ({ service: s })),
           error: message,
         },
         success: false,
@@ -1105,7 +1188,7 @@ export class UpdateService extends EventEmitter {
       }
 
       const currentServices = await this.getTenantDockerServiceInfo(instanceName, true);
-      const selected = services.map((service) => {
+      const selected = services.map(service => {
         const shortService = service.startsWith(`${instanceName}-`)
           ? service.substring(instanceName.length + 1)
           : service;
@@ -1114,7 +1197,7 @@ export class UpdateService extends EventEmitter {
           : `${instanceName}-${service}`;
 
         return currentServices.find(
-          (entry) =>
+          entry =>
             entry.service === service ||
             entry.service === shortService ||
             entry.containerName === service ||
@@ -1124,29 +1207,38 @@ export class UpdateService extends EventEmitter {
       selected.forEach((service, index) => {
         if (service) return;
         const result: ImageUpdateResult = {
-          service: services[index], status: 'skipped', error: 'Service not found',
+          service: services[index],
+          status: 'skipped',
+          error: 'Service not found',
         };
         results.push(result);
         this.emit('update:serviceResult', result);
       });
-      const selectedServices = selected.filter(
-        (service): service is DockerServiceInfo => Boolean(service)
+      const selectedServices = selected.filter((service): service is DockerServiceInfo =>
+        Boolean(service)
       );
       const servicesToUpdate = selectedServices.filter(
-        (service) => service.updateAvailable || options.force
+        service => service.updateAvailable || options.force
       );
 
       if (servicesToUpdate.length === 0) {
-        this.emit('update:log', { line: `No selected services for ${instanceName} require an update.` });
+        this.emit('update:log', {
+          line: `No selected services for ${instanceName} require an update.`,
+        });
         const outcome = this.getUpdateOutcome(results);
         this.emit('update:complete', {
-          type: 'tenantDocker', instanceName, services: [], updateId, outcome, results,
+          type: 'tenantDocker',
+          instanceName,
+          services: [],
+          updateId,
+          outcome,
+          results,
         });
         return;
       }
 
       const blocked = servicesToUpdate.filter(
-        (service) =>
+        service =>
           !service.managed ||
           service.updateStatus === 'registry_unreachable' ||
           service.updatePolicy === 'manual'
@@ -1162,18 +1254,23 @@ export class UpdateService extends EventEmitter {
           this.emit('update:serviceResult', result);
         }
       }
-      const eligibleServices = servicesToUpdate.filter((service) => !blocked.includes(service));
-      eligibleServices.forEach((service) => previous.set(service.service, service));
+      const eligibleServices = servicesToUpdate.filter(service => !blocked.includes(service));
+      eligibleServices.forEach(service => previous.set(service.service, service));
 
       if (eligibleServices.length === 0) {
         const outcome = this.getUpdateOutcome(results);
         this.emit('update:complete', {
-          type: 'tenantDocker', instanceName, services: [], updateId, outcome, results,
+          type: 'tenantDocker',
+          instanceName,
+          services: [],
+          updateId,
+          outcome,
+          results,
         });
         return;
       }
 
-      const imageOverrides = eligibleServices.map((service) => {
+      const imageOverrides = eligibleServices.map(service => {
         return `  ${service.service}:\n    image: ${this.getTargetImage(service)}`;
       });
       fs.writeFileSync(imageOverridePath, `services:\n${imageOverrides.join('\n')}\n`);
@@ -1203,7 +1300,7 @@ export class UpdateService extends EventEmitter {
         this.emit('update:log', { line: `[preflight] Instance backup created: ${backup.id}` });
       }
 
-      const orderedServices = eligibleServices.map((s) => s.service);
+      const orderedServices = eligibleServices.map(s => s.service);
       for (let i = 0; i < orderedServices.length; i++) {
         const service = orderedServices[i];
         const previousInfo = previous.get(service)!;
@@ -1216,8 +1313,13 @@ export class UpdateService extends EventEmitter {
           this.emit('update:log', { line: `[${instanceName}/${service}] Stopping container...` });
           serviceTouched = true;
           await this.runCompose([...updateComposeArgs, 'stop', service], projectPath);
-          this.emit('update:log', { line: `[${instanceName}/${service}] Starting with new image...` });
-          await this.runCompose([...updateComposeArgs, 'up', '-d', '--no-deps', service], projectPath);
+          this.emit('update:log', {
+            line: `[${instanceName}/${service}] Starting with new image...`,
+          });
+          await this.runCompose(
+            [...updateComposeArgs, 'up', '-d', '--no-deps', service],
+            projectPath
+          );
           await this.waitForTenantServiceHealthy(instanceName, service, 60_000);
 
           this.savePreviousImageTags(projectPath, [previousInfo]);
@@ -1238,9 +1340,15 @@ export class UpdateService extends EventEmitter {
             line: `[${instanceName}/${service}] Update failed: ${message}. Starting rollback...`,
           });
           if (historySaved) this.removePreviousImageTag(projectPath, service);
-          const rolledBack = !serviceTouched || await this.rollbackTenantDockerUpdate(
-            [service], previous, projectPath, composeArgs, instanceName
-          );
+          const rolledBack =
+            !serviceTouched ||
+            (await this.rollbackTenantDockerUpdate(
+              [service],
+              previous,
+              projectPath,
+              composeArgs,
+              instanceName
+            ));
           const result: ImageUpdateResult = {
             service,
             status: rolledBack ? 'rolled_back' : 'rollback_failed',
@@ -1274,7 +1382,12 @@ export class UpdateService extends EventEmitter {
       });
 
       this.emit('update:complete', {
-        type: 'tenantDocker', instanceName, services: orderedServices, updateId, outcome, results,
+        type: 'tenantDocker',
+        instanceName,
+        services: orderedServices,
+        updateId,
+        outcome,
+        results,
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1284,13 +1397,14 @@ export class UpdateService extends EventEmitter {
         resource: instanceName,
         details: {
           instanceName,
-          services: previous.size > 0
-            ? Array.from(previous.values()).map((s) => ({
-                service: s.service,
-                previousTag: s.tag,
-                targetTag: s.targetTag || s.latestApprovedTag || s.tag,
-              }))
-            : services.map((s) => ({ service: s })),
+          services:
+            previous.size > 0
+              ? Array.from(previous.values()).map(s => ({
+                  service: s.service,
+                  previousTag: s.tag,
+                  targetTag: s.targetTag || s.latestApprovedTag || s.tag,
+                }))
+              : services.map(s => ({ service: s })),
           error: message,
         },
         success: false,
@@ -1331,12 +1445,15 @@ export class UpdateService extends EventEmitter {
 
       const history = this.getPreviousImageTags(instanceName);
       const currentServices = await this.getTenantDockerServiceInfo(instanceName, true);
-      const selected = services.map((requested) => {
+      const selected = services.map(requested => {
         const shortName = requested.startsWith(`${instanceName}-`)
           ? requested.substring(instanceName.length + 1)
           : requested;
-        return currentServices.find((entry) =>
-          entry.service === requested || entry.service === shortName || entry.containerName === requested
+        return currentServices.find(
+          entry =>
+            entry.service === requested ||
+            entry.service === shortName ||
+            entry.containerName === requested
         );
       });
 
@@ -1349,8 +1466,12 @@ export class UpdateService extends EventEmitter {
           createdBy: options.requestedBy || 'system',
         });
         this.emit('update:backup', {
-          id: backup.id, name: backup.name, type: backup.type, path: backup.path,
-          size: backup.size, createdAt: backup.createdAt,
+          id: backup.id,
+          name: backup.name,
+          type: backup.type,
+          path: backup.path,
+          size: backup.size,
+          createdAt: backup.createdAt,
         });
       }
 
@@ -1373,21 +1494,37 @@ export class UpdateService extends EventEmitter {
         }
 
         try {
-          const previousImage = previousTag.previousImage || `${current.repository}:${previousTag.previousTag}`;
+          const previousImage =
+            previousTag.previousImage || `${current.repository}:${previousTag.previousTag}`;
           const parsedPrevious = parseImageReference(previousImage);
           const exactImage = previousTag.previousDigest
             ? `${parsedPrevious.repository}@${previousTag.previousDigest}`
             : previousImage;
-          fs.writeFileSync(rollbackPath, `services:\n  ${current.service}:\n    image: ${exactImage}\n`);
+          fs.writeFileSync(
+            rollbackPath,
+            `services:\n  ${current.service}:\n    image: ${exactImage}\n`
+          );
 
           if (previousTag.previousImageId) {
             await this.runCommand(
-              'docker', ['image', 'tag', previousTag.previousImageId, previousImage], projectPath
+              'docker',
+              ['image', 'tag', previousTag.previousImageId, previousImage],
+              projectPath
             );
           }
-          this.emit('update:log', { line: `[${instanceName}/${current.service}] Restoring ${previousImage}...` });
+          this.emit('update:log', {
+            line: `[${instanceName}/${current.service}] Restoring ${previousImage}...`,
+          });
           await this.runCompose(
-            [...composeArgs, '-f', path.basename(rollbackPath), 'up', '-d', '--no-deps', current.service],
+            [
+              ...composeArgs,
+              '-f',
+              path.basename(rollbackPath),
+              'up',
+              '-d',
+              '--no-deps',
+              current.service,
+            ],
             projectPath
           );
           await this.waitForTenantServiceHealthy(instanceName, current.service, 60_000);
@@ -1399,7 +1536,8 @@ export class UpdateService extends EventEmitter {
           };
           this.updateTenantComposeFileImages(projectPath, [restoredInfo]);
           await this.runCompose(
-            [...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', current.service], projectPath
+            [...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', current.service],
+            projectPath
           );
           await this.waitForTenantServiceHealthy(instanceName, current.service, 60_000);
           this.removePreviousImageTag(projectPath, current.service);
@@ -1437,7 +1575,13 @@ export class UpdateService extends EventEmitter {
         success: outcome === 'success',
       });
       this.emit('update:complete', {
-        type: 'tenantDocker', instanceName, services, mode: 'rollback', updateId, outcome, results,
+        type: 'tenantDocker',
+        instanceName,
+        services,
+        mode: 'rollback',
+        updateId,
+        outcome,
+        results,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1472,7 +1616,7 @@ export class UpdateService extends EventEmitter {
 
     while (Date.now() < deadline) {
       const containers = await this.dockerManager.listProjectContainers(instanceName);
-      const container = containers.find((entry) => {
+      const container = containers.find(entry => {
         const composeService = entry.Labels?.['com.docker.compose.service'];
         const name = entry.Names?.[0]?.replace(/^\//, '');
         return (
@@ -1488,9 +1632,10 @@ export class UpdateService extends EventEmitter {
         const inspect = await this.dockerManager.inspectContainer(container.Id);
         const health = inspect.State.Health?.Status;
         if (inspect.State.Running && (!health || health === 'healthy')) return;
-        if (health === 'unhealthy') throw new Error(`Healthcheck failed: ${instanceName}/${serviceName}`);
+        if (health === 'unhealthy')
+          throw new Error(`Healthcheck failed: ${instanceName}/${serviceName}`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
     throw new Error(`Healthcheck timeout: ${instanceName}/${serviceName}`);
   }
@@ -1506,7 +1651,10 @@ export class UpdateService extends EventEmitter {
     for (const service of selectedServices) {
       const targetImage = this.getTargetImage(service);
       const escapedService = service.service.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(^|\\n)([ \\t]*${escapedService}:[\\s\\S]*?image:[ \\t]*)[^\\s\\n]+`, 'g');
+      const regex = new RegExp(
+        `(^|\\n)([ \\t]*${escapedService}:[\\s\\S]*?image:[ \\t]*)[^\\s\\n]+`,
+        'g'
+      );
       const updatedContent = content.replace(regex, `$1$2${targetImage}`);
       if (updatedContent === content && service.targetTag !== service.tag) {
         throw new Error(`Could not persist the image tag for Compose service ${service.service}`);
@@ -1518,17 +1666,16 @@ export class UpdateService extends EventEmitter {
     logger.info(`Updated docker-compose.yml image tags in ${projectPath}`);
   }
 
-  private savePreviousImageTags(
-    projectPath: string,
-    selectedServices: DockerServiceInfo[]
-  ): void {
+  private savePreviousImageTags(projectPath: string, selectedServices: DockerServiceInfo[]): void {
     const historyPath = path.join(projectPath, '.image-update-previous.json');
     let history: Record<string, PreviousImageTag> = {};
     try {
       if (fs.existsSync(historyPath)) {
         history = JSON.parse(fs.readFileSync(historyPath, 'utf8'));
       }
-    } catch { /* ignore parse errors */ }
+    } catch {
+      /* ignore parse errors */
+    }
 
     for (const service of selectedServices) {
       history[service.service] = {
@@ -1548,23 +1695,36 @@ export class UpdateService extends EventEmitter {
     const historyPath = path.join(projectPath, '.image-update-previous.json');
     try {
       if (fs.existsSync(historyPath)) {
-        const parsed = JSON.parse(fs.readFileSync(historyPath, 'utf8')) as Record<string, Partial<PreviousImageTag>>;
-        return Object.fromEntries(Object.entries(parsed).map(([service, entry]) => [service, {
-          previousTag: entry.previousTag ?? 'unknown',
-          previousImage: entry.previousImage ?? '',
-          previousDigest: entry.previousDigest ?? null,
-          previousImageId: entry.previousImageId ?? null,
-          updatedAt: entry.updatedAt ?? new Date(0).toISOString(),
-        }]));
+        const parsed = JSON.parse(fs.readFileSync(historyPath, 'utf8')) as Record<
+          string,
+          Partial<PreviousImageTag>
+        >;
+        return Object.fromEntries(
+          Object.entries(parsed).map(([service, entry]) => [
+            service,
+            {
+              previousTag: entry.previousTag ?? 'unknown',
+              previousImage: entry.previousImage ?? '',
+              previousDigest: entry.previousDigest ?? null,
+              previousImageId: entry.previousImageId ?? null,
+              updatedAt: entry.updatedAt ?? new Date(0).toISOString(),
+            },
+          ])
+        );
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return {};
   }
 
   private removePreviousImageTag(projectPath: string, service: string): void {
     const historyPath = path.join(projectPath, '.image-update-previous.json');
     if (!fs.existsSync(historyPath)) return;
-    const history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) as Record<string, PreviousImageTag>;
+    const history = JSON.parse(fs.readFileSync(historyPath, 'utf8')) as Record<
+      string,
+      PreviousImageTag
+    >;
     delete history[service];
     fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
   }
@@ -1579,7 +1739,7 @@ export class UpdateService extends EventEmitter {
     this.emit('update:log', { line: '[rollback] Restoring previous tenant image digests.' });
     const rollbackPath = path.join(projectPath, '.image-update-rollback.yml');
     const entries = services
-      .map((service) => {
+      .map(service => {
         const previousInfo = previous.get(service);
         if (!previousInfo?.localDigest || previousInfo.repository === 'unknown') return null;
         return `  ${service}:\n    image: ${previousInfo.repository}@${previousInfo.localDigest}`;
@@ -1598,7 +1758,14 @@ export class UpdateService extends EventEmitter {
         try {
           if (previousInfo.localImageId) {
             await this.runCommand(
-              'docker', ['image', 'tag', previousInfo.localImageId, `${previousInfo.repository}:${previousInfo.tag}`], projectPath
+              'docker',
+              [
+                'image',
+                'tag',
+                previousInfo.localImageId,
+                `${previousInfo.repository}:${previousInfo.tag}`,
+              ],
+              projectPath
             );
           }
           await this.runCompose(
@@ -1608,7 +1775,10 @@ export class UpdateService extends EventEmitter {
           await this.waitForTenantServiceHealthy(instanceName, service, 60_000);
           // Recreate once from the unchanged base Compose file so Docker records
           // the previous tag instead of the temporary digest override.
-          await this.runCompose([...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', service], projectPath);
+          await this.runCompose(
+            [...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', service],
+            projectPath
+          );
           await this.waitForTenantServiceHealthy(instanceName, service, 60_000);
         } catch (rollbackError) {
           success = false;
@@ -1627,25 +1797,20 @@ export class UpdateService extends EventEmitter {
   }
 
   private getUpdateOutcome(
-    results: ImageUpdateResult[], manualRollback = false
+    results: ImageUpdateResult[],
+    manualRollback = false
   ): 'success' | 'partial' | 'failed' {
-    const updated = results.filter((result) =>
+    const updated = results.filter(result =>
       manualRollback ? result.status === 'rolled_back' : result.status === 'updated'
     ).length;
-    const failed = results.filter((result) =>
-      result.status === 'rollback_failed' ||
-      (!manualRollback && result.status === 'rolled_back') ||
-      (result.status === 'skipped' && result.error !== 'Already up to date')
+    const failed = results.filter(
+      result =>
+        result.status === 'rollback_failed' ||
+        (!manualRollback && result.status === 'rolled_back') ||
+        (result.status === 'skipped' && result.error !== 'Already up to date')
     ).length;
     if (failed === 0) return 'success';
     return updated > 0 ? 'partial' : 'failed';
-  }
-
-  private getComposeArgs(sharedDir: string): string[] {
-    const args = ['--env-file', '.env.shared', '-f', 'docker-compose.shared.yml'];
-    const overridePath = path.join(sharedDir, 'docker-compose.override.yml');
-    if (fs.existsSync(overridePath)) args.push('-f', 'docker-compose.override.yml');
-    return args;
   }
 
   private updateOrder(service: string): number {
@@ -1670,7 +1835,7 @@ export class UpdateService extends EventEmitter {
     options: DockerUpdateOptions,
     updateId: string
   ): Promise<{ services: DockerServiceInfo[]; skipped: ImageUpdateResult[] }> {
-    if (services.some((service) => service === 'multibase-db' || service === 'db')) {
+    if (services.some(service => service === 'multibase-db' || service === 'db')) {
       if (options.allowPostgres !== true) {
         throw new Error('PostgreSQL image updates require separate manual approval.');
       }
@@ -1698,43 +1863,56 @@ export class UpdateService extends EventEmitter {
           `Preflight blocked: insufficient free disk space (${Math.round(freeBytes / 1024 ** 3)} GiB available).`
         );
       }
-      this.emit('update:log', { line: `[preflight] Free disk space: ${Math.round(freeBytes / 1024 ** 3)} GiB` });
+      this.emit('update:log', {
+        line: `[preflight] Free disk space: ${Math.round(freeBytes / 1024 ** 3)} GiB`,
+      });
     } catch (error) {
       if (error instanceof Error && error.message.startsWith('Preflight blocked:')) throw error;
-      logger.warn(`Free disk space check unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Free disk space check unavailable: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     const status = await this.getDockerServiceInfo(true);
-    const selected = services.map((service) => status.find((entry) => entry.service === service));
+    const selected = services.map(service => status.find(entry => entry.service === service));
     const skipped: ImageUpdateResult[] = selected.flatMap((service, index) =>
-      service ? [] : [{ service: services[index], status: 'skipped' as const, error: 'Service not found' }]
+      service
+        ? []
+        : [{ service: services[index], status: 'skipped' as const, error: 'Service not found' }]
     );
-    const selectedServices = selected.filter((service): service is DockerServiceInfo => Boolean(service));
+    const selectedServices = selected.filter((service): service is DockerServiceInfo =>
+      Boolean(service)
+    );
     const blocked = selectedServices.filter(
-      (service) =>
+      service =>
         !service.managed ||
         service.updateStatus === 'registry_unreachable' ||
         (service.updatePolicy === 'manual' && options.allowPostgres !== true)
     );
-    skipped.push(...blocked.map((service) => ({
-      service: service.service,
-      status: 'skipped' as const,
-      error: `Preflight blocked (${service.updateStatus})`,
-    })));
-    const missingDigest = selectedServices.filter(
-      (service) => !blocked.includes(service) && !service.targetDigest
+    skipped.push(
+      ...blocked.map(service => ({
+        service: service.service,
+        status: 'skipped' as const,
+        error: `Preflight blocked (${service.updateStatus})`,
+      }))
     );
-    skipped.push(...missingDigest.map((service) => ({
-      service: service.service,
-      status: 'skipped' as const,
-      error: 'Preflight blocked (target digest unavailable)',
-    })));
+    const missingDigest = selectedServices.filter(
+      service => !blocked.includes(service) && !service.targetDigest
+    );
+    skipped.push(
+      ...missingDigest.map(service => ({
+        service: service.service,
+        status: 'skipped' as const,
+        error: 'Preflight blocked (target digest unavailable)',
+      }))
+    );
     const eligibleServices = selectedServices.filter(
-      (service) => !blocked.includes(service) && !missingDigest.includes(service)
+      service => !blocked.includes(service) && !missingDigest.includes(service)
     );
 
     const config = await this.runCompose([...composeArgs, 'config'], sharedDir, false);
-    if (!config.stdout.includes('services:')) throw new Error('Preflight failed: the Compose configuration is empty.');
+    if (!config.stdout.includes('services:'))
+      throw new Error('Preflight failed: the Compose configuration is empty.');
     const reportDir = path.join(sharedDir, '.update-reports');
     fs.mkdirSync(reportDir, { recursive: true });
     const reportPath = path.join(reportDir, `${updateId}.json`);
@@ -1753,10 +1931,12 @@ export class UpdateService extends EventEmitter {
         2
       )
     );
-    this.emit('update:log', { line: `[preflight] Compose configuration validated and report saved: ${reportPath}` });
+    this.emit('update:log', {
+      line: `[preflight] Compose configuration validated and report saved: ${reportPath}`,
+    });
 
     if (options.createBackup !== false && eligibleServices.length > 0) {
-      const isPostgresUpdate = eligibleServices.some((service) => service.service === 'multibase-db');
+      const isPostgresUpdate = eligibleServices.some(service => service.service === 'multibase-db');
       const backup = isPostgresUpdate
         ? await BackupService.createPostgresBackup({
             name: `postgres-image-update-${updateId}`,
@@ -1787,7 +1967,11 @@ export class UpdateService extends EventEmitter {
   private redactComposeConfig(config: string): string {
     return config
       .split(/\r?\n/)
-      .map((line) => (/password|secret|token|api.?key|service.?role/i.test(line) ? line.replace(/(:\s*).+$/, '$1[REDACTED]') : line))
+      .map(line =>
+        /password|secret|token|api.?key|service.?role/i.test(line)
+          ? line.replace(/(:\s*).+$/, '$1[REDACTED]')
+          : line
+      )
       .join('\n');
   }
 
@@ -1796,12 +1980,12 @@ export class UpdateService extends EventEmitter {
     cwd: string,
     emitOutput = true
   ): Promise<{ stdout: string; stderr: string }> {
-    const result = (await execFileAsync('docker', ['compose', ...args], {
+    const result = await runDockerCommand(['compose', ...args], {
       cwd,
       maxBuffer: 16 * 1024 * 1024,
       timeout: 120_000,
       env: { ...process.env, ...this.getMatrixComposeEnvironment() },
-    })) as unknown as { stdout: string; stderr: string };
+    });
     if (emitOutput) {
       if (result.stdout.trim()) this.emit('update:log', { line: result.stdout.trim() });
       if (result.stderr.trim()) this.emit('update:log', { line: result.stderr.trim() });
@@ -1833,8 +2017,8 @@ export class UpdateService extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     const containerName = service.startsWith('multibase-') ? service : `multibase-${service}`;
     while (Date.now() < deadline) {
-      const container = (await this.dockerManager.listAllContainers()).find((entry) =>
-        entry.Names.some((name) => name.replace(/^\//, '') === containerName)
+      const container = (await this.dockerManager.listAllContainers()).find(entry =>
+        entry.Names.some(name => name.replace(/^\//, '') === containerName)
       );
       if (container) {
         const inspect = await this.dockerManager.inspectContainer(container.Id);
@@ -1842,7 +2026,7 @@ export class UpdateService extends EventEmitter {
         if (inspect.State.Running && (!health || health === 'healthy')) return;
         if (health === 'unhealthy') throw new Error(`Healthcheck failed: ${service}`);
       }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 2000));
     }
     throw new Error(`Healthcheck timeout: ${service}`);
   }
@@ -1857,7 +2041,7 @@ export class UpdateService extends EventEmitter {
     this.emit('update:log', { line: '[rollback] Restoring previous image digests.' });
     const rollbackPath = path.join(sharedDir, '.update-reports', `${updateId}-rollback.yml`);
     const entries = services
-      .map((service) => {
+      .map(service => {
         const previousInfo = previous.get(service);
         if (!previousInfo?.localDigest || previousInfo.repository === 'unknown') return null;
         const composeService = service.replace(/^multibase-/, '');
@@ -1877,15 +2061,33 @@ export class UpdateService extends EventEmitter {
         const composeService = service.replace(/^multibase-/, '');
         if (previousInfo.localImageId) {
           await this.runCommand(
-            'docker', ['image', 'tag', previousInfo.localImageId, `${previousInfo.repository}:${previousInfo.tag}`], sharedDir
+            'docker',
+            [
+              'image',
+              'tag',
+              previousInfo.localImageId,
+              `${previousInfo.repository}:${previousInfo.tag}`,
+            ],
+            sharedDir
           );
         }
         await this.runCompose(
-          [...composeArgs, '-f', path.relative(sharedDir, rollbackPath), 'up', '-d', '--no-deps', composeService],
+          [
+            ...composeArgs,
+            '-f',
+            path.relative(sharedDir, rollbackPath),
+            'up',
+            '-d',
+            '--no-deps',
+            composeService,
+          ],
           sharedDir
         );
         await this.waitForServiceHealthy(service, 60_000);
-        await this.runCompose([...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', composeService], sharedDir);
+        await this.runCompose(
+          [...composeArgs, 'up', '-d', '--no-deps', '--force-recreate', composeService],
+          sharedDir
+        );
         await this.waitForServiceHealthy(service, 60_000);
       } catch (rollbackError) {
         success = false;
@@ -1916,12 +2118,13 @@ export class UpdateService extends EventEmitter {
     envOverrides: Record<string, string> = {}
   ): Promise<void> {
     return new Promise((resolve, reject) => {
+      const childEnv = { ...process.env, ...envOverrides };
       const child = spawn(cmd, args, {
         cwd,
         detached,
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
-        env: { ...process.env, ...envOverrides },
+        env: cmd === 'docker' ? getDockerCliEnvironment(childEnv) : childEnv,
       });
 
       child.stdout?.on('data', (data: Buffer) => {

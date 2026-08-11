@@ -176,10 +176,11 @@ DEPLOYMENT_MODE=local
 DATABASE_URL="file:./data/multibase.db"  # SQLite — no external DB needed
 
 # ─── DOCKER ───────────────────────────────────────────────────────────────────
-# Linux (default):
+# Only direct local socket access is supported; TCP endpoints are rejected.
+DOCKER_ACCESS_MODE=socket
+# Leave unset for the platform default, or override explicitly:
 # DOCKER_SOCKET_PATH=/var/run/docker.sock
-# Windows Docker Desktop (named pipe):
-DOCKER_HOST=npipe:////./pipe/docker_engine
+# DOCKER_SOCKET_PATH=//./pipe/docker_engine
 
 # ─── PATHS ────────────────────────────────────────────────────────────────────
 PROJECTS_PATH=../../projects  # relative path from dashboard/backend/

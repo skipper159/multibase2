@@ -1,39 +1,81 @@
 import Docker from 'dockerode';
 import { ContainerStats, ServiceStatus, ResourceMetrics, SHARED_SERVICES } from '../types';
 import { logger } from '../utils/logger';
+import { extractDockerPortBindings } from '../utils/sharedPorts';
+
+export interface DockerConnectionConfig {
+  accessMode: 'socket';
+  socketPath: string;
+}
+
+function socketPathFromDockerHost(dockerHost: string): string {
+  if (
+    dockerHost.startsWith('tcp://') ||
+    dockerHost.startsWith('http://') ||
+    dockerHost.startsWith('https://')
+  ) {
+    throw new Error(
+      'TCP Docker endpoints are disabled. Remove DOCKER_HOST and configure DOCKER_ACCESS_MODE=socket with DOCKER_SOCKET_PATH instead.'
+    );
+  }
+
+  if (dockerHost.startsWith('unix://')) {
+    return dockerHost.slice('unix://'.length);
+  }
+
+  if (dockerHost.startsWith('npipe://')) {
+    return dockerHost.slice('npipe://'.length);
+  }
+
+  if (dockerHost.startsWith('/') || dockerHost.startsWith('\\\\.\\pipe\\')) {
+    return dockerHost;
+  }
+
+  throw new Error(`Unsupported direct Docker endpoint: ${dockerHost}`);
+}
+
+/**
+ * Resolve the one supported Docker access model: a local Unix socket or
+ * Windows named pipe. A TCP endpoint is intentionally rejected so a stale
+ * docker-socket-proxy configuration cannot silently become active again.
+ */
+export function resolveDockerConnectionConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform
+): DockerConnectionConfig {
+  const accessMode = (env.DOCKER_ACCESS_MODE || 'socket').trim().toLowerCase();
+  if (accessMode !== 'socket') {
+    throw new Error(
+      `Unsupported DOCKER_ACCESS_MODE=${accessMode}. This release only supports direct socket access.`
+    );
+  }
+
+  const configuredSocket = env.DOCKER_SOCKET_PATH?.trim();
+  const legacyDockerHost = env.DOCKER_HOST?.trim();
+  const hostSocket = legacyDockerHost ? socketPathFromDockerHost(legacyDockerHost) : undefined;
+
+  if (configuredSocket && hostSocket && configuredSocket !== hostSocket) {
+    throw new Error(
+      'DOCKER_SOCKET_PATH conflicts with the direct endpoint configured in DOCKER_HOST.'
+    );
+  }
+
+  return {
+    accessMode: 'socket',
+    socketPath:
+      configuredSocket ||
+      hostSocket ||
+      (platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock'),
+  };
+}
 
 export class DockerManager {
   private docker: Docker;
 
-  constructor(socketPath?: string) {
-    let dockerOptions: Docker.DockerOptions;
-
-    if (socketPath) {
-      dockerOptions = { socketPath };
-    } else if (process.env.DOCKER_HOST) {
-      const dockerHost = process.env.DOCKER_HOST;
-      if (dockerHost.startsWith('npipe://')) {
-        // Windows named pipe
-        dockerOptions = { socketPath: dockerHost.replace('npipe://', '') };
-      } else if (dockerHost.startsWith('tcp://')) {
-        // TCP connection
-        const cleanHost = dockerHost.replace('tcp://', '');
-        const [host, portStr] = cleanHost.split(':');
-        dockerOptions = { host, port: portStr ? parseInt(portStr, 10) : 2378 };
-      } else {
-        dockerOptions = { socketPath: dockerHost };
-      }
-    } else {
-      // Auto-detect: Windows named pipe vs Unix socket
-      const isWindows = process.platform === 'win32';
-      const defaultSocket = isWindows ? '//./pipe/docker_engine' : '/var/run/docker.sock';
-      dockerOptions = { socketPath: defaultSocket };
-      logger.info(
-        `Using default Docker socket for ${isWindows ? 'Windows' : 'Linux'}: ${defaultSocket}`
-      );
-    }
-
-    this.docker = new Docker(dockerOptions);
+  constructor() {
+    const connection = resolveDockerConnectionConfig();
+    this.docker = new Docker({ socketPath: connection.socketPath });
+    logger.info(`Using direct Docker socket: ${connection.socketPath}`);
   }
 
   /**
@@ -69,10 +111,10 @@ export class DockerManager {
   async listSharedContainers(): Promise<Docker.ContainerInfo[]> {
     try {
       const containers = await this.docker.listContainers({ all: true });
-      return containers.filter((container) =>
-        container.Names.some((name) => {
+      return containers.filter(container =>
+        container.Names.some(name => {
           const cleanName = name.replace('/', '');
-          return SHARED_SERVICES.some((s) => cleanName === s);
+          return SHARED_SERVICES.some(s => cleanName === s);
         })
       );
     } catch (error) {
@@ -88,7 +130,7 @@ export class DockerManager {
     try {
       const containers = await this.listSharedContainers();
 
-      const serviceStatusPromises = containers.map(async (container) => {
+      const serviceStatusPromises = containers.map(async container => {
         const containerName = container.Names[0].replace('/', '');
         const serviceName = containerName.replace('multibase-', '');
 
@@ -122,6 +164,7 @@ export class DockerManager {
           uptime,
           cpu: metrics?.cpu || 0,
           memory: metrics?.memory || 0,
+          portBindings: extractDockerPortBindings(inspect),
         };
       });
 
@@ -138,7 +181,7 @@ export class DockerManager {
   async listProjectContainers(projectName: string): Promise<Docker.ContainerInfo[]> {
     try {
       const containers = await this.docker.listContainers({ all: true });
-      return containers.filter((container) => {
+      return containers.filter(container => {
         // Use Docker Compose project label for exact matching to avoid substring
         // collisions (e.g. "cloud-test" matching "cloud-test-2")
         const composeProject = container.Labels?.['com.docker.compose.project'];
@@ -146,7 +189,7 @@ export class DockerManager {
           return composeProject === projectName;
         }
         // Fallback: exact name match (container name is "/<projectName>-<service>-<n>")
-        return container.Names.some((name) => {
+        return container.Names.some(name => {
           const stripped = name.startsWith('/') ? name.slice(1) : name;
           return stripped === projectName || stripped.startsWith(`${projectName}-`);
         });
@@ -178,7 +221,7 @@ export class DockerManager {
       let networkRx = 0;
       let networkTx = 0;
       if (stats.networks) {
-        Object.values(stats.networks).forEach((network) => {
+        Object.values(stats.networks).forEach(network => {
           networkRx += network.rx_bytes;
           networkTx += network.tx_bytes;
         });
@@ -196,7 +239,7 @@ export class DockerManager {
         blkioStats?.io_service_bytes_recursive &&
         blkioStats.io_service_bytes_recursive.length > 0
       ) {
-        blkioStats.io_service_bytes_recursive.forEach((io) => {
+        blkioStats.io_service_bytes_recursive.forEach(io => {
           if (io.op === 'Read' || io.op === 'read') diskRead += io.value;
           if (io.op === 'Write' || io.op === 'write') diskWrite += io.value;
         });
@@ -262,7 +305,7 @@ export class DockerManager {
       const containers = await this.listProjectContainers(projectName);
 
       // Parallelize container inspection and stats gathering
-      const serviceStatusPromises = containers.map(async (container) => {
+      const serviceStatusPromises = containers.map(async container => {
         const containerName = container.Names[0].replace('/', '');
         const serviceName = this.extractServiceName(containerName, projectName);
 
@@ -405,7 +448,7 @@ export class DockerManager {
     try {
       const containers = await this.listProjectContainers(projectName);
       const container = containers.find(
-        (c) => this.extractServiceName(c.Names[0].replace('/', ''), projectName) === serviceName
+        c => this.extractServiceName(c.Names[0].replace('/', ''), projectName) === serviceName
       );
 
       if (!container) {
@@ -427,7 +470,7 @@ export class DockerManager {
   async restartSharedService(serviceName: string): Promise<void> {
     try {
       const containers = await this.listSharedContainers();
-      const container = containers.find((candidate) => {
+      const container = containers.find(candidate => {
         const containerName = candidate.Names[0].replace('/', '');
         const shortName = containerName.replace('multibase-', '');
         return containerName === serviceName || shortName === serviceName;

@@ -1,6 +1,6 @@
 {
   "name": "multibase2",
-  "version": "3.1.12",
+  "version": "3.1.13",
   "private": true,
   "description": "Multibase – Single Pane of Glass for self-hosted Supabase",
   "workspaces": [

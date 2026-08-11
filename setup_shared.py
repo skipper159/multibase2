@@ -155,7 +155,10 @@ SHARED_NGINX_GATEWAY_IMAGE=nginx:1.29.1-alpine
 # Shared Nginx Gateway
 ############
 SHARED_GATEWAY_PORT=8000
-# Tenant ports pre-allocated for nginx port mapping (Windows/Docker Desktop)
+# Keep the shared gateway and all tenant gateway ports local to the host.
+# Set explicitly to 0.0.0.0 only for local Docker Desktop development.
+NGINX_BIND_HOST=127.0.0.1
+# Tenant ports pre-allocated for nginx port mapping
 NGINX_PORT_1=4928
 NGINX_PORT_2=4351
 NGINX_PORT_3=4681

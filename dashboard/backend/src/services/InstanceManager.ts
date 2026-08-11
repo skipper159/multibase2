@@ -25,6 +25,7 @@ import {
   backupEnvFile,
 } from '../utils/envParser';
 import { logger } from '../utils/logger';
+import { runDockerCommand } from '../utils/dockerCommand';
 import DockerManager from './DockerManager';
 import { loadImageMatrix } from './ImageRegistryService';
 import { RedisCache } from './RedisCache';
@@ -177,52 +178,29 @@ export class InstanceManager {
     sql: string,
     options?: { csv?: boolean; tuplesOnly?: boolean }
   ): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const args = [
-        'exec',
-        'multibase-db',
-        'psql',
-        '-U',
-        'supabase_admin',
-        '-d',
-        database,
-        '-v',
-        'ON_ERROR_STOP=1',
-      ];
+    const args = [
+      'exec',
+      'multibase-db',
+      'psql',
+      '-U',
+      'supabase_admin',
+      '-d',
+      database,
+      '-v',
+      'ON_ERROR_STOP=1',
+    ];
 
-      if (options?.csv) {
-        args.push('--csv');
-      }
+    if (options?.csv) {
+      args.push('--csv');
+    }
 
-      if (options?.tuplesOnly) {
-        args.push('-t', '-A');
-      }
+    if (options?.tuplesOnly) {
+      args.push('-t', '-A');
+    }
 
-      args.push('-c', sql);
-
-      const proc = spawn('docker', args, { windowsHide: true });
-      let stdout = '';
-      let stderr = '';
-
-      proc.stdout.on('data', (chunk) => {
-        stdout += chunk.toString();
-      });
-
-      proc.stderr.on('data', (chunk) => {
-        stderr += chunk.toString();
-      });
-
-      proc.on('error', (error) => reject(error));
-
-      proc.on('close', (code) => {
-        if (code === 0) {
-          resolve(stdout.trim());
-          return;
-        }
-
-        reject(new Error(stderr.trim() || stdout.trim() || `psql exited with code ${code}`));
-      });
-    });
+    args.push('-c', sql);
+    const { stdout } = await runDockerCommand(args);
+    return stdout.trim();
   }
 
   private parseCsvLine(line: string): string[] {
@@ -329,15 +307,15 @@ export class InstanceManager {
 
     const lines = csvOutput
       .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
 
     if (lines.length < 2) {
       return [];
     }
 
     const headers = this.parseCsvLine(lines[0]);
-    return lines.slice(1).map((line) => {
+    return lines.slice(1).map(line => {
       const values = this.parseCsvLine(line);
       const row: Record<string, any> = {};
 
@@ -389,11 +367,11 @@ export class InstanceManager {
 
       const projectDirs = fs
         .readdirSync(this.projectsPath, { withFileTypes: true })
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => dirent.name);
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
 
       // Parallelize instance loading for better performance
-      const instancePromises = projectDirs.map(async (projectName) => {
+      const instancePromises = projectDirs.map(async projectName => {
         try {
           const instance = await this.getInstance(projectName);
           return instance;
@@ -427,10 +405,10 @@ export class InstanceManager {
 
       const projectDirs = fs
         .readdirSync(this.projectsPath, { withFileTypes: true })
-        .filter((dirent) => dirent.isDirectory())
-        .map((dirent) => dirent.name);
+        .filter(dirent => dirent.isDirectory())
+        .map(dirent => dirent.name);
 
-      const configs = projectDirs.map((name) => {
+      const configs = projectDirs.map(name => {
         try {
           const projectPath = path.join(this.projectsPath, name);
           const envPath = path.join(projectPath, '.env');
@@ -474,11 +452,11 @@ export class InstanceManager {
       const services = await this.dockerManager.getServiceStatus(name);
 
       // Calculate health status
-      const healthyServices = services.filter((s) => s.health === 'healthy').length;
+      const healthyServices = services.filter(s => s.health === 'healthy').length;
       const totalServices = services.length;
 
       let overallStatus: 'healthy' | 'degraded' | 'unhealthy' | 'stopped' = 'stopped';
-      const runningServices = services.filter((s) => s.status === 'running').length;
+      const runningServices = services.filter(s => s.status === 'running').length;
 
       if (runningServices === 0) {
         overallStatus = 'stopped';
@@ -506,7 +484,7 @@ export class InstanceManager {
           let totalDiskWrite = 0;
           let latestTimestamp = new Date();
 
-          metricsMap.forEach((value) => {
+          metricsMap.forEach(value => {
             if (value) {
               totalCpu += value.cpu || 0;
               totalMemory += value.memory || 0;
@@ -631,19 +609,19 @@ export class InstanceManager {
         let stdout = '';
         let stderr = '';
 
-        child.stdout.on('data', (data) => {
+        child.stdout.on('data', data => {
           stdout += data.toString();
         });
 
-        child.stderr.on('data', (data) => {
+        child.stderr.on('data', data => {
           stderr += data.toString();
         });
 
-        child.on('error', (error) => {
+        child.on('error', error => {
           reject(error);
         });
 
-        child.on('close', (code) => {
+        child.on('close', code => {
           if (code !== 0) {
             reject(new Error(`Python script exited with code ${code}\nStderr: ${stderr}`));
           } else {
@@ -671,8 +649,9 @@ export class InstanceManager {
       // damit der User es bei Bedarf noch überschreiben kann.
       // -------------------------------------------------------
       {
-        const isLocal = request.deploymentType === 'localhost' || process.env.DEPLOYMENT_MODE === 'local';
-        const mode = isLocal ? 'local' : (process.env.DEPLOYMENT_MODE || 'cloud');
+        const isLocal =
+          request.deploymentType === 'localhost' || process.env.DEPLOYMENT_MODE === 'local';
+        const mode = isLocal ? 'local' : process.env.DEPLOYMENT_MODE || 'cloud';
         const envPath = path.join(projectPath, '.env');
         if (fs.existsSync(envPath)) {
           const currentEnv = parseEnvFile(envPath);
@@ -786,7 +765,10 @@ export class InstanceManager {
     instance: SupabaseInstance,
     deploymentType: 'localhost' | 'cloud'
   ): Promise<void> {
-    const isLocal = deploymentType === 'localhost' || process.env.DEPLOYMENT_MODE === 'local' || process.platform === 'win32';
+    const isLocal =
+      deploymentType === 'localhost' ||
+      process.env.DEPLOYMENT_MODE === 'local' ||
+      process.platform === 'win32';
 
     // ── LOCAL MODE ──────────────────────────────────────────────────────────
     if (isLocal) {
@@ -1705,10 +1687,13 @@ ${sslBlock}
       ];
       for (const [pattern, matrixName] of replacements) {
         const definition = matrix.images[matrixName];
-        if (definition) content = content.replace(pattern, `image: ${definition.repository}:${definition.tag}`);
+        if (definition)
+          content = content.replace(pattern, `image: ${definition.repository}:${definition.tag}`);
       }
     } catch (error) {
-      logger.warn(`Image matrix unavailable while creating tenant ${projectName}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Image matrix unavailable while creating tenant ${projectName}: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
 
     // Update project name
@@ -1746,7 +1731,7 @@ ${sslBlock}
       'analytics',
     ];
 
-    dirs.forEach((dir) => {
+    dirs.forEach(dir => {
       const fullPath = path.join(volumesPath, dir);
       fs.mkdirSync(fullPath, { recursive: true });
     });
@@ -1756,8 +1741,8 @@ ${sslBlock}
     const targetInitPath = path.join(volumesPath, 'db');
 
     if (fs.existsSync(templateInitPath)) {
-      const sqlFiles = fs.readdirSync(templateInitPath).filter((f) => f.endsWith('.sql'));
-      sqlFiles.forEach((file) => {
+      const sqlFiles = fs.readdirSync(templateInitPath).filter(f => f.endsWith('.sql'));
+      sqlFiles.forEach(file => {
         fs.copyFileSync(path.join(templateInitPath, file), path.join(targetInitPath, file));
       });
     }
@@ -1835,7 +1820,9 @@ ${sslBlock}
 
     try {
       logger.info(`Starting instance: ${name}`);
-      const { stdout, stderr } = await execAsync('docker compose up -d', { cwd: projectPath });
+      const { stdout, stderr } = await runDockerCommand(['compose', 'up', '-d'], {
+        cwd: projectPath,
+      });
 
       if (stderr && !stderr.includes('Creating') && !stderr.includes('Starting')) {
         logger.warn(`Docker compose stderr: ${stderr}`);
@@ -1861,8 +1848,8 @@ ${sslBlock}
 
     try {
       logger.info(`Stopping instance: ${name}`);
-      const command = keepVolumes ? 'docker compose stop' : 'docker compose down -v';
-      const { stdout, stderr } = await execAsync(command, { cwd: projectPath });
+      const composeArgs = keepVolumes ? ['compose', 'stop'] : ['compose', 'down', '-v'];
+      const { stdout, stderr } = await runDockerCommand(composeArgs, { cwd: projectPath });
 
       if (stderr) {
         logger.warn(`Docker compose stderr: ${stderr}`);
@@ -1908,8 +1895,8 @@ ${sslBlock}
       }
 
       // Force recreate all containers
-      await execAsync('docker compose down', { cwd: projectPath });
-      await execAsync('docker compose up -d --force-recreate', { cwd: projectPath });
+      await runDockerCommand(['compose', 'down'], { cwd: projectPath });
+      await runDockerCommand(['compose', 'up', '-d', '--force-recreate'], { cwd: projectPath });
 
       logger.info(`Successfully recreated instance: ${name}`);
     } catch (error) {
@@ -1933,8 +1920,8 @@ ${sslBlock}
 
       // Stop and remove containers
       try {
-        const command = removeVolumes ? 'docker compose down -v' : 'docker compose down';
-        await execAsync(command, { cwd: projectPath });
+        const composeArgs = removeVolumes ? ['compose', 'down', '-v'] : ['compose', 'down'];
+        await runDockerCommand(composeArgs, { cwd: projectPath });
       } catch (error) {
         logger.warn('Error stopping containers, continuing with deletion:', error);
       }
@@ -2024,13 +2011,13 @@ ${sslBlock}
         if (typeof obj === 'string') {
           const matches = obj.match(/\${([A-Z0-9_]+)(?::-([^}]+))?}/g);
           if (matches) {
-            matches.forEach((m) => {
+            matches.forEach(m => {
               const varName = m.replace(/^\${|}$/g, '').split(':-')[0];
               vars.add(varName);
             });
           }
         } else if (typeof obj === 'object' && obj !== null) {
-          Object.values(obj).forEach((v) => compileEnvVars(v, vars));
+          Object.values(obj).forEach(v => compileEnvVars(v, vars));
         }
       };
 
@@ -2068,7 +2055,7 @@ ${sslBlock}
           const processedKeys = new Set<string>();
 
           // Update existing keys
-          envLines.forEach((line) => {
+          envLines.forEach(line => {
             const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
             if (match) {
               const key = match[1];
@@ -2122,7 +2109,7 @@ ${sslBlock}
           // CAUTION: This might break dependencies.
 
           if (compose.services) {
-            Object.keys(compose.services).forEach((serviceName) => {
+            Object.keys(compose.services).forEach(serviceName => {
               if (!enabledServices.has(serviceName)) {
                 // Check if core service? Maybe not enforce logic here, let user shoot foot.
                 delete compose.services[serviceName];

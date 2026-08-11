@@ -264,9 +264,11 @@ export interface SharedServiceStatus {
 export interface SharedServicePort {
   label: string;
   host?: number;
+  hostAddress?: string;
   container: number;
   protocol: 'tcp' | 'http';
   public: boolean;
+  actual: boolean;
 }
 
 export interface SharedPorts {

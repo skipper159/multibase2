@@ -120,7 +120,6 @@ const isOriginAllowed = (origin: string | undefined): boolean => {
 };
 
 const PROJECTS_PATH = process.env.PROJECTS_PATH || path.join(process.cwd(), '../../projects');
-const DOCKER_SOCKET_PATH = process.env.DOCKER_SOCKET_PATH;
 const METRICS_INTERVAL = parseInt(process.env.METRICS_INTERVAL || '15000', 10);
 const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL || '10000', 10);
 
@@ -200,7 +199,7 @@ app.use((req, _res, next) => {
 app.use(apiKeyAuth);
 
 // Initialize services
-const dockerManager = new DockerManager(DOCKER_SOCKET_PATH);
+const dockerManager = new DockerManager();
 const redisCache = new RedisCache();
 const instanceManager = new InstanceManager(PROJECTS_PATH, dockerManager, prisma, redisCache);
 const healthMonitor = new HealthMonitor(

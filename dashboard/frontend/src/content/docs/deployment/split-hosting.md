@@ -105,7 +105,8 @@ nano .env
 PORT=3001
 NODE_ENV=production
 DATABASE_URL="file:./data/multibase.db"
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_ACCESS_MODE=socket
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 PROJECTS_PATH=/opt/multibase/projects
 
 # CORS - Frontend domain

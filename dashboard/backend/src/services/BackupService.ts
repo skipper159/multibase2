@@ -1,18 +1,25 @@
 import prisma from '../lib/prisma';
 import { promises as fs } from 'fs';
 import { createReadStream } from 'fs';
-import { exec, execFile, spawn } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import path from 'path';
 import archiver from 'archiver';
 import extract from 'extract-zip';
 import { logger } from '../utils/logger';
 import { parseEnvFile } from '../utils/envParser';
-import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  ListObjectsV2Command,
+  GetObjectCommand,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
-
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+import {
+  getDockerCliEnvironment,
+  runDockerCommand,
+  runDockerCommandWithInput,
+} from '../utils/dockerCommand';
 
 export interface BackupOptions {
   type: 'full' | 'instance' | 'database';
@@ -76,9 +83,13 @@ export class BackupService {
             throw new Error('Instance ID required for instance backup');
           }
           // Backup specific instance
-          filesToBackup = await this.getInstanceBackupFiles(options.instanceName || options.instanceId);
+          filesToBackup = await this.getInstanceBackupFiles(
+            options.instanceName || options.instanceId
+          );
           // Identify temporary sql / temp dirs created for this backup
-          tempFilesToCleanup = filesToBackup.filter((f) => f.endsWith('.sql') || f.includes('-s3-storage-'));
+          tempFilesToCleanup = filesToBackup.filter(
+            f => f.endsWith('.sql') || f.includes('-s3-storage-')
+          );
           break;
 
         case 'database':
@@ -116,7 +127,7 @@ export class BackupService {
         // Import lazily to avoid circular dependency
         const { ExternalStorageService } = await import('./ExternalStorageService');
         for (const destinationId of options.destinationIds) {
-          ExternalStorageService.uploadBackup(backup.path, backup.id, destinationId).catch((err) =>
+          ExternalStorageService.uploadBackup(backup.path, backup.id, destinationId).catch(err =>
             logger.error(`Background upload to destination ${destinationId} failed:`, err)
           );
         }
@@ -159,9 +170,17 @@ export class BackupService {
 
     try {
       await fs.mkdir(tempDir, { recursive: true });
-      const { stdout } = await execFileAsync(
-        'docker',
-        ['exec', 'multibase-db', 'pg_dumpall', '-U', 'postgres', '--clean', '--if-exists', '--no-role-passwords'],
+      const { stdout } = await runDockerCommand(
+        [
+          'exec',
+          'multibase-db',
+          'pg_dumpall',
+          '-U',
+          'postgres',
+          '--clean',
+          '--if-exists',
+          '--no-role-passwords',
+        ],
         { maxBuffer: 500 * 1024 * 1024 }
       );
       await fs.writeFile(sqlPath, stdout, 'utf8');
@@ -309,7 +328,11 @@ export class BackupService {
               where: { id: backup.instanceId || options.instanceId },
               select: { name: true },
             });
-            await this.restoreInstanceBackup(extractPath, options.instanceId, instance?.name || options.instanceId);
+            await this.restoreInstanceBackup(
+              extractPath,
+              options.instanceId,
+              instance?.name || options.instanceId
+            );
           }
           break;
 
@@ -406,17 +429,35 @@ export class BackupService {
       const containerName = `${instanceName}-db`;
       const password = envConfig['POSTGRES_PASSWORD'];
       if (!password) {
-        logger.warn(`No POSTGRES_PASSWORD found for classic instance ${instanceName}, skipping pg_dump`);
+        logger.warn(
+          `No POSTGRES_PASSWORD found for classic instance ${instanceName}, skipping pg_dump`
+        );
         return null;
       }
 
       const dumpPath = path.join(this.BACKUP_DIR, `${instanceName}-classic-db-${Date.now()}.sql`);
 
-      const cmd = `docker exec -e PGPASSWORD=${password} ${containerName} pg_dump -U postgres -d postgres --no-owner --no-privileges`;
-      const { stdout } = await execAsync(cmd, { maxBuffer: 200 * 1024 * 1024 });
+      const { stdout } = await runDockerCommand(
+        [
+          'exec',
+          '-e',
+          `PGPASSWORD=${password}`,
+          containerName,
+          'pg_dump',
+          '-U',
+          'postgres',
+          '-d',
+          'postgres',
+          '--no-owner',
+          '--no-privileges',
+        ],
+        { maxBuffer: 200 * 1024 * 1024 }
+      );
 
       await fs.writeFile(dumpPath, stdout, 'utf-8');
-      logger.info(`Classic instance DB dump created: ${dumpPath} (${this.formatBytes(stdout.length)})`);
+      logger.info(
+        `Classic instance DB dump created: ${dumpPath} (${this.formatBytes(stdout.length)})`
+      );
       return dumpPath;
     } catch (error) {
       logger.error(`Error dumping classic instance DB for ${instanceName}:`, error);
@@ -468,10 +509,7 @@ export class BackupService {
           const getResult = await s3.send(getCmd);
           const filePath = path.join(dumpDir, obj.Key);
           await fs.mkdir(path.dirname(filePath), { recursive: true });
-          await fs.writeFile(
-            filePath,
-            Buffer.from(await getResult.Body!.transformToByteArray())
-          );
+          await fs.writeFile(filePath, Buffer.from(await getResult.Body!.transformToByteArray()));
           totalObjects++;
         }
         continuationToken = listResult.NextContinuationToken;
@@ -541,14 +579,27 @@ export class BackupService {
 
       const sharedEnv = parseEnvFile(sharedEnvPath);
       const dbName = `project_${instanceName}`.replace(/-/g, '_');
-      const port = sharedEnv.SHARED_PG_PORT || '5432';
       const password = sharedEnv.SHARED_POSTGRES_PASSWORD;
 
       const dumpPath = path.join(this.BACKUP_DIR, `${instanceName}-db-${Date.now()}.sql`);
 
       // Use docker exec to pg_dump from the shared database container
-      const cmd = `docker exec -e PGPASSWORD=${password} multibase-db pg_dump -U postgres -d ${dbName} --no-owner --no-privileges`;
-      const { stdout } = await execAsync(cmd, { maxBuffer: 100 * 1024 * 1024 });
+      const { stdout } = await runDockerCommand(
+        [
+          'exec',
+          '-e',
+          `PGPASSWORD=${password}`,
+          'multibase-db',
+          'pg_dump',
+          '-U',
+          'postgres',
+          '-d',
+          dbName,
+          '--no-owner',
+          '--no-privileges',
+        ],
+        { maxBuffer: 100 * 1024 * 1024 }
+      );
 
       await fs.writeFile(dumpPath, stdout, 'utf-8');
       logger.info(`Cloud tenant DB dump created: ${dumpPath} (${this.formatBytes(stdout.length)})`);
@@ -575,12 +626,34 @@ export class BackupService {
       }
 
       // Terminate connections
-      const terminateCmd = `docker exec -e PGPASSWORD=${password} ${containerName} psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres' AND pid<>pg_backend_pid();"`;
-      await execAsync(terminateCmd).catch(() => {}); // non-fatal
+      await runDockerCommand([
+        'exec',
+        '-e',
+        `PGPASSWORD=${password}`,
+        containerName,
+        'psql',
+        '-U',
+        'postgres',
+        '-c',
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='postgres' AND pid<>pg_backend_pid();",
+      ]).catch(() => {}); // non-fatal
 
       const sqlContent = await fs.readFile(sqlDumpPath, 'utf-8');
-      const restoreCmd = `docker exec -i -e PGPASSWORD=${password} ${containerName} psql -U postgres -d postgres`;
-      await execAsync(restoreCmd, { input: sqlContent } as any);
+      await runDockerCommandWithInput(
+        [
+          'exec',
+          '-i',
+          '-e',
+          `PGPASSWORD=${password}`,
+          containerName,
+          'psql',
+          '-U',
+          'postgres',
+          '-d',
+          'postgres',
+        ],
+        sqlContent
+      );
 
       logger.info(`Classic instance DB restored for ${instanceName}`);
       return true;
@@ -601,13 +674,41 @@ export class BackupService {
       const password = sharedEnv.SHARED_POSTGRES_PASSWORD;
 
       // Terminate connections and recreate database
-      const dropCmd = `docker exec -e PGPASSWORD=${password} multibase-db psql -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${dbName}' AND pid<>pg_backend_pid();" -c "DROP DATABASE IF EXISTS ${dbName};" -c "CREATE DATABASE ${dbName};"`;
-      await execAsync(dropCmd);
+      await runDockerCommand([
+        'exec',
+        '-e',
+        `PGPASSWORD=${password}`,
+        'multibase-db',
+        'psql',
+        '-U',
+        'postgres',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${dbName}' AND pid<>pg_backend_pid();`,
+        '-c',
+        `DROP DATABASE IF EXISTS "${dbName}";`,
+        '-c',
+        `CREATE DATABASE "${dbName}";`,
+      ]);
 
       // Restore dump via docker exec with stdin
       const sqlContent = await fs.readFile(sqlDumpPath, 'utf-8');
-      const restoreCmd = `docker exec -i -e PGPASSWORD=${password} multibase-db psql -U postgres -d ${dbName}`;
-      await execAsync(restoreCmd, { input: sqlContent } as any);
+      await runDockerCommandWithInput(
+        [
+          'exec',
+          '-i',
+          '-e',
+          `PGPASSWORD=${password}`,
+          'multibase-db',
+          'psql',
+          '-U',
+          'postgres',
+          '-d',
+          dbName,
+        ],
+        sqlContent
+      );
 
       logger.info(`Cloud tenant DB restored: ${dbName}`);
       return true;
@@ -634,7 +735,7 @@ export class BackupService {
       const archive = archiver('zip', { zlib: { level: 9 } });
 
       output.on('close', () => resolve());
-      archive.on('error', (err) => reject(err));
+      archive.on('error', err => reject(err));
 
       archive.pipe(output);
 
@@ -676,12 +777,16 @@ export class BackupService {
   /**
    * Restore instance backup (cloud-aware, with S3 storage restore and container restart)
    */
-  private async restoreInstanceBackup(extractPath: string, instanceId: string, instanceName: string): Promise<void> {
+  private async restoreInstanceBackup(
+    extractPath: string,
+    instanceId: string,
+    instanceName: string
+  ): Promise<void> {
     const projectsDest = path.join(process.cwd(), '../../projects', instanceName);
     const extractedDirs = await fs.readdir(extractPath);
 
     // Check for any .sql file (cloud or classic DB dump)
-    const sqlDump = extractedDirs.find((f) => f.endsWith('.sql'));
+    const sqlDump = extractedDirs.find(f => f.endsWith('.sql'));
     if (sqlDump) {
       const sqlPath = path.join(extractPath, sqlDump);
       if (sqlDump.includes('-classic-db-')) {
@@ -694,10 +799,8 @@ export class BackupService {
     }
 
     // Find S3 storage backup directory if present
-    const s3BackupDir = extractedDirs.find((f) => f.includes('-s3-storage-') || f === 's3-storage');
-    const projectDir = extractedDirs.find(
-      (f) => !f.endsWith('.sql') && f !== s3BackupDir
-    );
+    const s3BackupDir = extractedDirs.find(f => f.includes('-s3-storage-') || f === 's3-storage');
+    const projectDir = extractedDirs.find(f => !f.endsWith('.sql') && f !== s3BackupDir);
 
     if (projectDir) {
       const src = path.join(extractPath, projectDir);
@@ -720,12 +823,14 @@ export class BackupService {
     try {
       if (await fs.stat(composeFile).catch(() => null)) {
         logger.info(`Restarting containers for ${instanceName} after restore...`);
-        await execAsync('docker compose stop', { cwd: projectsDest });
-        await execAsync('docker compose up -d', { cwd: projectsDest });
+        await runDockerCommand(['compose', 'stop'], { cwd: projectsDest });
+        await runDockerCommand(['compose', 'up', '-d'], { cwd: projectsDest });
         logger.info(`Containers restarted for ${instanceId}`);
       }
     } catch (err) {
-        logger.warn(`Could not restart containers for ${instanceName} after restore (non-fatal): ${err}`);
+      logger.warn(
+        `Could not restart containers for ${instanceName} after restore (non-fatal): ${err}`
+      );
     }
   }
 
@@ -748,14 +853,14 @@ export class BackupService {
       const child = spawn(
         'docker',
         ['exec', '-i', 'multibase-db', 'psql', '-U', 'postgres', '-d', 'postgres'],
-        { stdio: ['pipe', 'pipe', 'pipe'] }
+        { stdio: ['pipe', 'pipe', 'pipe'], env: getDockerCliEnvironment() }
       );
       let stderr = '';
       child.stderr.on('data', (chunk: Buffer) => {
         stderr += chunk.toString();
       });
       child.on('error', reject);
-      child.on('close', (code) => {
+      child.on('close', code => {
         if (code === 0) resolve();
         else reject(new Error(stderr.trim() || `PostgreSQL restore exited with code ${code}`));
       });
@@ -796,16 +901,18 @@ export class BackupService {
   /**
    * List all standalone .sql dump files in the BACKUP_DIR
    */
-  async listSqlDumps(): Promise<Array<{
-    filename: string;
-    size: number;
-    createdAt: Date;
-    suggestedInstance?: string;
-  }>> {
+  async listSqlDumps(): Promise<
+    Array<{
+      filename: string;
+      size: number;
+      createdAt: Date;
+      suggestedInstance?: string;
+    }>
+  > {
     try {
       await this.ensureBackupDir();
       const files = await fs.readdir(this.BACKUP_DIR);
-      const sqlFiles = files.filter((f) => f.endsWith('.sql'));
+      const sqlFiles = files.filter(f => f.endsWith('.sql'));
 
       const result = [];
       for (const filename of sqlFiles) {
@@ -838,7 +945,10 @@ export class BackupService {
   /**
    * Read SQL dump file content
    */
-  async readSqlDump(filename: string, maxBytes: number = 2 * 1024 * 1024): Promise<{ filename: string; content: string; truncated: boolean }> {
+  async readSqlDump(
+    filename: string,
+    maxBytes: number = 2 * 1024 * 1024
+  ): Promise<{ filename: string; content: string; truncated: boolean }> {
     const safeFilename = path.basename(filename);
     const filePath = path.join(this.BACKUP_DIR, safeFilename);
 
@@ -906,7 +1016,7 @@ export class BackupService {
       await extract(backup.path, { dir: tempExtractDir });
 
       const files = await fs.readdir(tempExtractDir);
-      const sqlFile = files.find((f) => f.endsWith('.sql'));
+      const sqlFile = files.find(f => f.endsWith('.sql'));
 
       if (!sqlFile) {
         throw new Error('No .sql dump file found inside the backup ZIP archive');
@@ -942,7 +1052,7 @@ export class BackupService {
     try {
       await extract(backup.path, { dir: tempExtractDir });
       const files = await fs.readdir(tempExtractDir);
-      const sqlFile = files.find((f) => f.endsWith('.sql'));
+      const sqlFile = files.find(f => f.endsWith('.sql'));
 
       if (!sqlFile) {
         throw new Error('No .sql dump file found in backup ZIP');
@@ -991,7 +1101,9 @@ export class BackupService {
     const headerLines = text
       .split('\n')
       .slice(0, 15)
-      .filter((line) => line.trim().startsWith('--') || line.trim().startsWith('/*') || line.trim() === '')
+      .filter(
+        line => line.trim().startsWith('--') || line.trim().startsWith('/*') || line.trim() === ''
+      )
       .join('\n');
 
     return {

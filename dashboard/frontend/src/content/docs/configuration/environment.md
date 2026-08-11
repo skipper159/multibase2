@@ -21,15 +21,18 @@ Location: `dashboard/backend/.env`
 
 ### Docker
 
-| Variable      | Default  | Description        |
-| ------------- | -------- | ------------------ |
-| `DOCKER_HOST` | (varies) | Docker socket path |
+| Variable             | Default            | Description                                                                 |
+| -------------------- | ------------------ | --------------------------------------------------------------------------- |
+| `DOCKER_ACCESS_MODE` | `socket`           | Direct local Docker socket access; TCP proxy endpoints are not supported    |
+| `DOCKER_SOCKET_PATH` | (platform default) | Filesystem path of the Unix socket or Windows Docker Desktop named pipe     |
 
 **Values by OS:**
 
-- **Linux:** `unix:///var/run/docker.sock`
-- **Windows:** `npipe:////./pipe/docker_engine`
-- **macOS:** `unix:///var/run/docker.sock`
+- **Linux:** `/var/run/docker.sock`
+- **Windows:** `//./pipe/docker_engine`
+- **macOS:** `/var/run/docker.sock`
+
+> **Security:** Membership in the Linux `docker` group grants effective root-level host control. The installer therefore assigns it only to the dedicated `multibase` service user, verifies the direct socket and `docker exec`, and never exposes the socket over TCP. Keep the backend API admin-protected and do not add interactive users to the `docker` group unnecessarily.
 
 ### Paths
 
@@ -80,7 +83,8 @@ NODE_ENV=production
 DATABASE_URL="file:./data/multibase.db"
 
 # Docker
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_ACCESS_MODE=socket
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Projects
 PROJECTS_PATH=/opt/multibase/projects

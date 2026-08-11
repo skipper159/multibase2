@@ -49,6 +49,13 @@ export interface ServiceStatus {
   uptime: number; // seconds
   cpu: number; // percentage
   memory: number; // MB
+  /** Runtime Docker port bindings read from Container Inspect. */
+  portBindings?: Array<{
+    container: number;
+    transport: 'tcp' | 'udp';
+    host?: number;
+    hostAddress?: string;
+  }>;
 }
 
 export interface HealthStatus {
@@ -252,9 +259,12 @@ export interface SharedServiceStatus {
 export interface SharedServicePort {
   label: string;
   host?: number;
+  hostAddress?: string;
   container: number;
   protocol: 'tcp' | 'http';
   public: boolean;
+  /** False when the Compose-defined port is not present in the live container. */
+  actual: boolean;
 }
 
 export interface SharedInfraDiskUsage {
@@ -278,7 +288,6 @@ export interface SharedPorts {
   /** @deprecated Use gateway instead */
   kong?: number;
   meta?: number;
-  docker_proxy?: number;
 }
 
 // Shared Infrastructure Config
@@ -291,7 +300,6 @@ export const SHARED_SERVICES = [
   'multibase-meta',
   'multibase-pooler',
   'multibase-nginx-gateway',
-  'multibase-docker-proxy',
 ] as const;
 
 export const TENANT_SERVICES = ['auth', 'rest', 'realtime', 'storage', 'edge-functions'] as const;

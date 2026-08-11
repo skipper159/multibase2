@@ -18,6 +18,7 @@ import {
   Server,
   Bot,
   ArrowUpCircle,
+  Plug,
 } from 'lucide-react';
 import { useState, createContext, useContext } from 'react';
 import { useUpdateStatus } from '../hooks/useUpdates';
@@ -160,6 +161,9 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           <SidebarGroup title="Resources">
             <SidebarLink to="/setup" icon={BookOpen}>
               Setup Guide
+            </SidebarLink>
+            <SidebarLink to="/resources/postgresql" icon={Plug}>
+              PostgreSQL Connection
             </SidebarLink>
             <SidebarLink to="/setup/ai-assistant/overview" icon={Bot}>
               AI Assistant Docs

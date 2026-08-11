@@ -48,7 +48,8 @@ NODE_ENV=production
 DATABASE_URL="file:./data/multibase.db"
 
 # Docker (Linux)
-DOCKER_HOST=unix:///var/run/docker.sock
+DOCKER_ACCESS_MODE=socket
+DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Projects path
 PROJECTS_PATH=/opt/multibase/projects

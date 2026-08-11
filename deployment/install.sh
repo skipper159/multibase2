@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 case "${REPO_BRANCH}" in
-  "main"|"Feature_Roadmap") SCRIPT_VERSION="3.1.10" ;;
+  "main"|"Feature_Roadmap") SCRIPT_VERSION="3.1.13" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
@@ -976,7 +976,7 @@ DATABASE_URL="file:./data/multibase.db"
 REDIS_URL=redis://:${redis_password}@localhost:6379
 
 # Docker
-DOCKER_HOST=tcp://127.0.0.1:2378
+DOCKER_ACCESS_MODE=socket
 DOCKER_SOCKET_PATH=/var/run/docker.sock
 
 # Paths
@@ -1148,13 +1148,17 @@ setup_shared_infra() {
 
     local compose_file="${shared_dir}/docker-compose.shared.yml"
     local env_file="${shared_dir}/.env.shared"
+    local shared_compose_args=(--file "$compose_file")
+    if [ -f "${shared_dir}/docker-compose.override.yml" ]; then
+        shared_compose_args+=(--file "${shared_dir}/docker-compose.override.yml")
+    fi
+    shared_compose_args+=(--env-file "$env_file" --project-name multibase-shared)
 
     # 3. Pull images — show per-image progress (first install ~8 GB, can take 10–20 min)
     echo ""
     echo -e "        ${DIM}[1/2] Pulling Docker images (first install ~8 GB, may take 10–20 min)...${NC}"
     local images
-    images=$(docker compose --file "$compose_file" --env-file "$env_file" \
-        --project-name multibase-shared config --images 2>/dev/null || true)
+    images=$(docker compose "${shared_compose_args[@]}" config --images 2>/dev/null || true)
     for img in $images; do
         if docker image inspect "$img" &>/dev/null; then
             echo -e "        ${GREEN}✓${NC} ${DIM}${img} (already cached)${NC}"
@@ -1174,11 +1178,10 @@ setup_shared_infra() {
 
     # 4. Start shared stack and show per-container status
     # Future option: Force Docker to re-apply updated port bindings (e.g. 127.0.0.1) immediately on update:
-    # docker compose --file "$compose_file" --env-file "$env_file" --project-name multibase-shared up -d --force-recreate
+    # docker compose "${shared_compose_args[@]}" up -d --force-recreate
     sudo -u "$INSTALL_USER" "$python" "${INSTALL_DIR}/setup_shared.py" start >> "$LOG_FILE" 2>&1
     # Print status of each container
-    docker compose --file "$compose_file" --env-file "$env_file" \
-        --project-name multibase-shared ps \
+    docker compose "${shared_compose_args[@]}" ps \
         --format "table {{.Name}}\t{{.Status}}" 2>/dev/null | tail -n +2 | \
         while IFS=$'\t' read -r name status; do
             if echo "$status" | grep -qi "up\|running\|healthy"; then
@@ -1264,34 +1267,58 @@ start_redis() {
     fi
 }
 
-start_docker_proxy() {
-    local proxy_container="multibase-docker-proxy"
-    if docker ps --format '{{.Names}}' | grep -q "^${proxy_container}$"; then
-        step_ok "Docker Socket Proxy already running"
-        return 0
+configure_direct_docker_access() {
+    [ "$DEPLOY_MODE" = "split-frontend" ] && return 0
+
+    step "Configuring direct Docker socket access..."
+    if [ ! -S /var/run/docker.sock ]; then
+        error_exit "Docker socket /var/run/docker.sock is not available"
     fi
 
-    docker rm -f "$proxy_container" &>/dev/null || true
-    if docker run -d \
-        --name "$proxy_container" \
-        --restart unless-stopped \
-        -p 127.0.0.1:2378:2375 \
-        -v /var/run/docker.sock:/var/run/docker.sock:ro \
-        -e CONTAINERS=1 \
-        -e POST=1 \
-        -e IMAGES=1 \
-        -e NETWORKS=1 \
-        -e INFO=1 \
-        -e VERSION=1 \
-        -e PING=1 \
-        -e EVENTS=1 \
-        -e VOLUMES=0 \
-        -e BUILD=0 \
-        -e PRIVILEGED=0 \
-        tecnativa/docker-socket-proxy >> "$LOG_FILE" 2>&1; then
-        step_ok "Docker Socket Proxy active (127.0.0.1:2378)"
-    else
-        log_warning "Could not start Docker Socket Proxy (Docker Hub rate limit 429). Falling back to direct socket connection."
+    if ! getent group docker &>/dev/null; then
+        error_exit "Docker group does not exist"
+    fi
+
+    if ! id -nG "$INSTALL_USER" | tr ' ' '\n' | grep -qx docker; then
+        usermod -aG docker "$INSTALL_USER"
+        step_new "User '$INSTALL_USER' added to docker group"
+    fi
+
+    local backend_env="$INSTALL_DIR/dashboard/backend/.env"
+    if [ -f "$backend_env" ]; then
+        sed -i '/^DOCKER_HOST=/d' "$backend_env"
+        if grep -q '^DOCKER_ACCESS_MODE=' "$backend_env"; then
+            sed -i 's|^DOCKER_ACCESS_MODE=.*|DOCKER_ACCESS_MODE=socket|' "$backend_env"
+        else
+            printf '\nDOCKER_ACCESS_MODE=socket\n' >> "$backend_env"
+        fi
+        if grep -q '^DOCKER_SOCKET_PATH=' "$backend_env"; then
+            sed -i 's|^DOCKER_SOCKET_PATH=.*|DOCKER_SOCKET_PATH=/var/run/docker.sock|' "$backend_env"
+        else
+            printf 'DOCKER_SOCKET_PATH=/var/run/docker.sock\n' >> "$backend_env"
+        fi
+        chown "$INSTALL_USER":"$INSTALL_USER" "$backend_env"
+        chmod 600 "$backend_env"
+    fi
+
+    if ! sudo -u "$INSTALL_USER" -H env -u DOCKER_HOST docker info >/dev/null 2>>"$LOG_FILE"; then
+        error_exit "User '$INSTALL_USER' cannot access /var/run/docker.sock"
+    fi
+
+    if docker ps --format '{{.Names}}' | grep -q '^multibase-db$'; then
+        if ! sudo -u "$INSTALL_USER" -H env -u DOCKER_HOST docker exec multibase-db true >> "$LOG_FILE" 2>&1; then
+            error_exit "Direct Docker socket is reachable, but docker exec is not permitted"
+        fi
+    fi
+
+    step_ok "Direct Docker socket access verified"
+}
+
+remove_legacy_docker_proxy() {
+    local proxy_container="multibase-docker-proxy"
+    if docker ps -a --format '{{.Names}}' | grep -q "^${proxy_container}$"; then
+        docker rm -f "$proxy_container" >> "$LOG_FILE" 2>&1
+        step_ok "Legacy Docker Socket Proxy removed"
     fi
 }
 
@@ -1446,9 +1473,7 @@ RemainAfterExit=yes
 User=${INSTALL_USER}
 WorkingDirectory=${INSTALL_DIR}
 ExecStart=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/setup_shared.py start
-ExecStop=/usr/bin/docker compose \\
-    -f ${INSTALL_DIR}/shared/docker-compose.shared.yml \\
-    --env-file ${INSTALL_DIR}/shared/.env.shared down
+ExecStop=${INSTALL_DIR}/venv/bin/python3 ${INSTALL_DIR}/setup_shared.py stop
 TimeoutStartSec=120
 
 [Install]
@@ -1944,17 +1969,7 @@ ENVEOF
         step_ok "Frontend .env.production updated (VITE_API_URL=${_backend_url})"
     fi
     sudo -u "$INSTALL_USER" npm run build >> "$LOG_FILE" 2>&1
-    step "Ensuring Docker Socket Proxy..."
-    start_docker_proxy
-    if [ -f "$INSTALL_DIR/dashboard/backend/.env" ]; then
-        if ! grep -q '^DOCKER_HOST=' "$INSTALL_DIR/dashboard/backend/.env"; then
-            echo "" >> "$INSTALL_DIR/dashboard/backend/.env"
-            echo "DOCKER_HOST=tcp://127.0.0.1:2378" >> "$INSTALL_DIR/dashboard/backend/.env"
-        else
-            sed -i 's|^DOCKER_HOST=.*|DOCKER_HOST=tcp://127.0.0.1:2378|' "$INSTALL_DIR/dashboard/backend/.env"
-        fi
-    fi
-    step_ok "Docker Socket Proxy active (127.0.0.1:2378)"
+    configure_direct_docker_access
 
     step "Restarting services..."
     if docker ps --format '{{.Names}}' | grep -q '^multibase-db$'; then
@@ -1971,6 +1986,7 @@ ENVEOF
     fi
     sudo -u "$INSTALL_USER" -H pm2 save >> "$LOG_FILE" 2>&1
     step_ok "Backend restarted"
+    remove_legacy_docker_proxy
     nginx -t >> "$LOG_FILE" 2>&1
     systemctl reload nginx
     step_ok "Nginx reloaded"
@@ -2161,7 +2177,8 @@ main() {
     setup_shared_infra
     build_frontend
     run_db_migrations
-    start_docker_proxy
+    configure_direct_docker_access
+    remove_legacy_docker_proxy
     start_redis
     configure_nginx
     start_pm2

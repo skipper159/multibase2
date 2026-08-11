@@ -11,7 +11,6 @@
  */
 
 import { exec } from 'child_process';
-import { execFile } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import fs from 'fs';
@@ -23,9 +22,9 @@ import { generateAndWriteTenantConfig, reloadNginxGateway } from './NginxGateway
 import DockerManager from './DockerManager';
 import { loadImageMatrix } from './ImageRegistryService';
 import prisma from '../lib/prisma';
+import { runDockerCommand } from '../utils/dockerCommand';
 
 const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
 const STUDIO_IMAGE_FALLBACK = 'supabase/studio:latest';
 const TENANT_STUDIO_IDLE_MS = Math.max(
   60_000,
@@ -60,7 +59,9 @@ export class StudioManager {
       const definition = matrix.images[matrixName];
       return definition ? `${definition.repository}:${definition.tag}` : fallback;
     } catch (error) {
-      logger.warn(`Image matrix unavailable for ${matrixName}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Image matrix unavailable for ${matrixName}: ${error instanceof Error ? error.message : String(error)}`
+      );
       return fallback;
     }
   }
@@ -71,7 +72,7 @@ export class StudioManager {
     this.dockerManager = dockerManager;
 
     this.cleanupTimer = setInterval(() => {
-      this.cleanupIdleTenantStudios().catch((error) => {
+      this.cleanupIdleTenantStudios().catch(error => {
         logger.warn('Idle Studio cleanup failed:', error);
       });
     }, TENANT_STUDIO_CLEANUP_INTERVAL_MS);
@@ -79,7 +80,7 @@ export class StudioManager {
     this.cleanupTimer.unref();
 
     // Recover or cleanup orphaned studio containers from previous backend process
-    this.recoverOrphanedStudiosOnStart().catch((error) => {
+    this.recoverOrphanedStudiosOnStart().catch(error => {
       logger.warn('Startup orphaned studio recovery failed:', error);
     });
   }
@@ -94,7 +95,9 @@ export class StudioManager {
       for (const lease of activeLeases) {
         const lastAccess = lease.lastAccessAt.getTime();
         if (Date.now() - lastAccess >= TENANT_STUDIO_IDLE_MS) {
-          logger.info(`Cleaning up orphaned Studio container for tenant "${lease.tenantName}" on startup...`);
+          logger.info(
+            `Cleaning up orphaned Studio container for tenant "${lease.tenantName}" on startup...`
+          );
           await this.removeContainerIfExists(`multibase-studio-${lease.tenantName}`);
           await this.removeContainerIfExists(`multibase-meta-${lease.tenantName}`);
           await prisma.studioLease.update({
@@ -110,15 +113,13 @@ export class StudioManager {
 
       // Also remove containers that have no persistent lease at all. This covers
       // crashes during activation and containers created by an older backend.
-      const { stdout } = await execFileAsync(
-        'docker',
-        ['ps', '-a', '--format={{.Names}}'],
-        { timeout: 10000 }
-      );
+      const { stdout } = await runDockerCommand(['ps', '-a', '--format={{.Names}}'], {
+        timeout: 10000,
+      });
       const managedContainers = stdout
         .split(/\r?\n/)
-        .map((name) => name.trim())
-        .filter((name) => /^multibase-(studio|meta)-[a-z0-9-]+$/.test(name));
+        .map(name => name.trim())
+        .filter(name => /^multibase-(studio|meta)-[a-z0-9-]+$/.test(name));
 
       for (const containerName of managedContainers) {
         const match = containerName.match(/^multibase-(?:studio|meta)-(.+)$/);
@@ -255,7 +256,7 @@ export class StudioManager {
         update: { lastAccessAt: new Date(now), status: 'active', studioPort: portToSave },
         create: { tenantName, studioPort: portToSave, status: 'active' },
       })
-      .catch((err) => logger.warn(`Failed to update StudioLease for ${tenantName}:`, err));
+      .catch(err => logger.warn(`Failed to update StudioLease for ${tenantName}:`, err));
   }
 
   private async cleanupIdleTenantStudios(): Promise<void> {
@@ -311,7 +312,10 @@ export class StudioManager {
       sharedEnv['SHARED_VAULT_ENC_KEY'] ||
       '';
     const openaiApiKey =
-      tenantEnv['OPENAI_API_KEY'] || sharedEnv['OPENAI_API_KEY'] || process.env.OPENAI_API_KEY || '';
+      tenantEnv['OPENAI_API_KEY'] ||
+      sharedEnv['OPENAI_API_KEY'] ||
+      process.env.OPENAI_API_KEY ||
+      '';
     const tenantFunctionsHostPath = path
       .join(this.projectsDir, tenantName, 'volumes', 'functions')
       .replace(/\\/g, '/');
@@ -351,8 +355,7 @@ export class StudioManager {
 
     const metaEnvFile = this.writeDockerEnvFile('meta', metaEnvironment);
     try {
-      await execFileAsync(
-        'docker',
+      await runDockerCommand(
         [
           'run',
           '-d',
@@ -375,8 +378,7 @@ export class StudioManager {
 
     const studioEnvFile = this.writeDockerEnvFile('studio', studioEnvironment);
     try {
-      await execFileAsync(
-        'docker',
+      await runDockerCommand(
         [
           'run',
           '-d',
@@ -503,7 +505,7 @@ export class StudioManager {
       'PG_META_CRYPTO_KEY',
       'AUTH_JWT_SECRET',
     ];
-    const missing = required.filter((key) => !environment[key]?.trim());
+    const missing = required.filter(key => !environment[key]?.trim());
     if (missing.length > 0) {
       throw new Error(
         `Cannot start tenant Studio "${tenantName}": missing required configuration: ${missing.join(', ')}`
@@ -564,14 +566,15 @@ export class StudioManager {
             const afterProxyPass = ppIdx + proxyPassMarker.length;
             const semicolonIdx = config.indexOf(';', afterProxyPass);
             if (semicolonIdx !== -1) {
-              updated =
-                config.slice(0, afterProxyPass) + studioPort + config.slice(semicolonIdx);
+              updated = config.slice(0, afterProxyPass) + studioPort + config.slice(semicolonIdx);
             }
           }
         }
         if (updated !== config) {
           fs.writeFileSync(sysNginxConfig, updated);
-          logger.info(`Updated system nginx studio proxy_pass for "${tenantName}" to port ${studioPort}`);
+          logger.info(
+            `Updated system nginx studio proxy_pass for "${tenantName}" to port ${studioPort}`
+          );
         }
         // Reload system nginx (multibase has sudo NOPASSWD for this)
         await execAsync('sudo nginx -s reload', { timeout: 10000 });
@@ -596,7 +599,7 @@ export class StudioManager {
 
   private async removeContainerIfExists(containerName: string): Promise<void> {
     try {
-      await execAsync(`docker rm -f ${containerName}`, { timeout: 10000 });
+      await runDockerCommand(['rm', '-f', containerName], { timeout: 10000 });
     } catch {
       // ignore if container does not exist
     }
@@ -610,7 +613,7 @@ export class StudioManager {
         continue;
       }
 
-      const isFree = await new Promise<boolean>((resolve) => {
+      const isFree = await new Promise<boolean>(resolve => {
         const server = net.createServer();
         server.once('error', () => resolve(false));
         server.once('listening', () => {
@@ -631,7 +634,8 @@ export class StudioManager {
 
   /**
    * Restart pg-meta with a different database name.
-   * We use docker exec to set the environment and restart.
+   * The container is recreated with an argument-safe Docker invocation so the
+   * new database environment is applied without routing through a shell.
    */
   private async switchPgMeta(projectDb: string): Promise<void> {
     try {
@@ -641,27 +645,37 @@ export class StudioManager {
       const pgPassword = sharedEnv['SHARED_POSTGRES_PASSWORD'] || '';
 
       // Stop current pg-meta
-      await execAsync('docker stop multibase-meta', { timeout: 10000 });
+      await runDockerCommand(['stop', 'multibase-meta'], { timeout: 10000 });
 
       // Remove and recreate with new DB name
-      await execAsync('docker rm multibase-meta', { timeout: 10000 });
+      await runDockerCommand(['rm', 'multibase-meta'], { timeout: 10000 });
 
       // Recreate pg-meta with the new database
-      const createCmd = [
-        'docker run -d',
-        '--name multibase-meta',
-        '--network multibase-shared',
-        '--restart unless-stopped',
-        `-e PG_META_PORT=8080`,
-        `-e PG_META_DB_HOST=multibase-db`,
-        `-e PG_META_DB_PORT=5432`,
-        `-e "PG_META_DB_NAME=${projectDb}"`,
-        `-e PG_META_DB_USER=supabase_admin`,
-        `-e "PG_META_DB_PASSWORD=${pgPassword}"`,
+      const createArgs = [
+        'run',
+        '-d',
+        '--name',
+        'multibase-meta',
+        '--network',
+        'multibase-shared',
+        '--restart',
+        'unless-stopped',
+        '-e',
+        'PG_META_PORT=8080',
+        '-e',
+        'PG_META_DB_HOST=multibase-db',
+        '-e',
+        'PG_META_DB_PORT=5432',
+        '-e',
+        `PG_META_DB_NAME=${projectDb}`,
+        '-e',
+        'PG_META_DB_USER=supabase_admin',
+        '-e',
+        `PG_META_DB_PASSWORD=${pgPassword}`,
         this.getManagedImage('tenant-meta', 'supabase/postgres-meta:v0.95.2'),
-      ].join(' ');
+      ];
 
-      await execAsync(createCmd, { timeout: 15000 });
+      await runDockerCommand(createArgs, { timeout: 15000 });
 
       // Wait for pg-meta to be ready
       await this.waitForContainer('multibase-meta', 15000);
@@ -685,10 +699,10 @@ export class StudioManager {
 
       // Check at least auth, rest, storage are running
       const requiredServices = ['auth', 'rest', 'storage'];
-      const containerNames = containers.map((c) => c.Names[0]?.replace('/', '') || '');
+      const containerNames = containers.map(c => c.Names[0]?.replace('/', '') || '');
 
       for (const service of requiredServices) {
-        const found = containerNames.some((name) => name.includes(`${tenantName}-${service}`));
+        const found = containerNames.some(name => name.includes(`${tenantName}-${service}`));
         if (!found) {
           throw new Error(
             `Required service "${service}" is not running for tenant "${tenantName}"`
@@ -711,20 +725,20 @@ export class StudioManager {
 
     while (Date.now() - start < timeoutMs) {
       try {
-        const { stdout } = await execAsync(
-          `docker inspect --format='{{.State.Status}}' ${containerName}`,
+        const { stdout } = await runDockerCommand(
+          ['inspect', '--format={{.State.Status}}', containerName],
           { timeout: 5000 }
         );
-        const status = stdout.trim().replace(/'/g, '');
+        const status = stdout.trim();
         if (status === 'running') {
           // Give it a moment to actually be ready
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 500));
           return;
         }
       } catch {
         // Container might not exist yet
       }
-      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
     }
 
     throw new Error(`Container ${containerName} did not become ready within ${timeoutMs}ms`);
@@ -740,8 +754,7 @@ export class StudioManager {
 
     while (Date.now() - start < timeoutMs) {
       try {
-        const { stdout: statusOutput } = await execFileAsync(
-          'docker',
+        const { stdout: statusOutput } = await runDockerCommand(
           ['inspect', '--format={{.State.Status}}', containerName],
           { timeout: 5000 }
         );
@@ -750,9 +763,12 @@ export class StudioManager {
           throw new Error(`container status is ${status || 'unknown'}`);
         }
 
-        const { stdout: healthOutput } = await execFileAsync(
-          'docker',
-          ['inspect', '--format={{if .State.Health}}{{.State.Health.Status}}{{end}}', containerName],
+        const { stdout: healthOutput } = await runDockerCommand(
+          [
+            'inspect',
+            '--format={{if .State.Health}}{{.State.Health.Status}}{{end}}',
+            containerName,
+          ],
           { timeout: 5000 }
         );
         const health = healthOutput.trim();
@@ -770,7 +786,7 @@ export class StudioManager {
         // overall timeout is reached.
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     throw new Error(`Container ${containerName} did not become healthy within ${timeoutMs}ms`);

@@ -185,10 +185,15 @@ fi
 
 # Bring down shared docker-compose stack
 if [ -f "$INSTALL_DIR/shared/docker-compose.shared.yml" ]; then
-    local_env=""
-    [ -f "$INSTALL_DIR/shared/.env.shared" ] && local_env="--env-file $INSTALL_DIR/shared/.env.shared"
-    docker compose -f "$INSTALL_DIR/shared/docker-compose.shared.yml" \
-        $local_env --project-name multibase-shared down -v 2>/dev/null || true
+    shared_compose_args=(-f "$INSTALL_DIR/shared/docker-compose.shared.yml")
+    if [ -f "$INSTALL_DIR/shared/docker-compose.override.yml" ]; then
+        shared_compose_args+=(-f "$INSTALL_DIR/shared/docker-compose.override.yml")
+    fi
+    if [ -f "$INSTALL_DIR/shared/.env.shared" ]; then
+        shared_compose_args+=(--env-file "$INSTALL_DIR/shared/.env.shared")
+    fi
+    docker compose "${shared_compose_args[@]}" --project-name multibase-shared down -v 2>/dev/null || true
+    docker rm -f multibase-docker-proxy 2>/dev/null || true
     ok "Shared stack containers removed (with volumes)"
 else
     # Fallback: remove any containers with multibase prefix

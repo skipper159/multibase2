@@ -10,12 +10,9 @@
 
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { logger } from '../utils/logger';
 import { parseEnvFile } from '../utils/envParser';
-
-const execAsync = promisify(exec);
+import { runDockerCommand } from '../utils/dockerCommand';
 
 export interface NginxGatewayOptions {
   /** Tenant name, e.g. "cloud-test" */
@@ -38,7 +35,8 @@ export interface NginxGatewayOptions {
  * Read the gateway template and replace placeholders with tenant-specific values.
  */
 export function generateNginxGatewayConfig(options: NginxGatewayOptions): string {
-  const { tenantName, anonKey, serviceRoleKey, gatewayPort, ipWhitelist, rateLimitRpm, sslOnly } = options;
+  const { tenantName, anonKey, serviceRoleKey, gatewayPort, ipWhitelist, rateLimitRpm, sslOnly } =
+    options;
 
   // Resolve template path (works from both dist/ and src/)
   const possiblePaths = [
@@ -77,7 +75,7 @@ export function generateNginxGatewayConfig(options: NginxGatewayOptions): string
   }
   if (ipWhitelist && ipWhitelist.length > 0) {
     securityServerDirectives += `    # IP Whitelist\n`;
-    securityServerDirectives += ipWhitelist.map((ip) => `    allow ${ip};`).join('\n') + '\n';
+    securityServerDirectives += ipWhitelist.map(ip => `    allow ${ip};`).join('\n') + '\n';
     securityServerDirectives += `    deny all;\n`;
   }
   if (rateLimitRpm && rateLimitRpm > 0) {
@@ -126,7 +124,10 @@ export async function generateAndWriteTenantConfig(
   // Read optional SECURITY_* env vars
   const ipWhitelistRaw = tenantEnv['SECURITY_IP_WHITELIST'] || '';
   const ipWhitelist = ipWhitelistRaw
-    ? ipWhitelistRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    ? ipWhitelistRaw
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
     : undefined;
   const rateLimitRpmRaw = parseInt(tenantEnv['SECURITY_RATE_LIMIT_RPM'] || '0', 10);
   const rateLimitRpm = !isNaN(rateLimitRpmRaw) && rateLimitRpmRaw > 0 ? rateLimitRpmRaw : undefined;
@@ -191,23 +192,33 @@ export async function removeNginxTenantConfig(
 export async function reloadNginxGateway(): Promise<void> {
   try {
     // First validate the config
-    const { stderr: testStderr } = await execAsync('docker exec multibase-nginx-gateway nginx -t', {
-      timeout: 10000,
-    });
+    const { stderr: testStderr } = await runDockerCommand(
+      ['exec', 'multibase-nginx-gateway', 'nginx', '-t'],
+      {
+        timeout: 10000,
+      }
+    );
     if (testStderr && !testStderr.includes('successful')) {
       logger.warn(`Nginx config test output: ${testStderr}`);
     }
 
     // Then reload
-    await execAsync('docker exec multibase-nginx-gateway nginx -s reload', { timeout: 10000 });
+    await runDockerCommand(['exec', 'multibase-nginx-gateway', 'nginx', '-s', 'reload'], {
+      timeout: 10000,
+    });
     logger.info('Nginx gateway reloaded successfully');
-  } catch (error: any) {
-    logger.warn(`Nginx reload failed, attempting container restart: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`Nginx reload failed, attempting container restart: ${message}`);
     try {
-      await execAsync('docker restart multibase-nginx-gateway', { timeout: 30000 });
+      await runDockerCommand(['restart', 'multibase-nginx-gateway'], { timeout: 30000 });
       logger.info('Nginx gateway container restarted successfully');
-    } catch (restartError: any) {
-      throw new Error(`Failed to reload/restart Nginx gateway: ${restartError.message}`);
+    } catch (restartError: unknown) {
+      const restartMessage =
+        restartError instanceof Error ? restartError.message : String(restartError);
+      throw new Error(`Failed to reload/restart Nginx gateway: ${restartMessage}`, {
+        cause: restartError,
+      });
     }
   }
 }
@@ -217,11 +228,11 @@ export async function reloadNginxGateway(): Promise<void> {
  */
 export async function isNginxGatewayRunning(): Promise<boolean> {
   try {
-    const { stdout } = await execAsync(
-      "docker inspect --format='{{.State.Running}}' multibase-nginx-gateway",
+    const { stdout } = await runDockerCommand(
+      ['inspect', '--format={{.State.Running}}', 'multibase-nginx-gateway'],
       { timeout: 5000 }
     );
-    return stdout.trim().replace(/'/g, '') === 'true';
+    return stdout.trim() === 'true';
   } catch {
     return false;
   }
@@ -245,7 +256,7 @@ export async function regenerateAllTenantConfigs(
     return generated;
   }
 
-  const tenants = fs.readdirSync(projectsDir).filter((name) => {
+  const tenants = fs.readdirSync(projectsDir).filter(name => {
     const envPath = path.join(projectsDir, name, '.env');
     return fs.existsSync(envPath) && fs.statSync(path.join(projectsDir, name)).isDirectory();
   });
@@ -280,6 +291,6 @@ export function getConfiguredTenants(sharedDir: string): string[] {
 
   return fs
     .readdirSync(tenantsDir)
-    .filter((f) => f.endsWith('.conf') && !f.endsWith('.backup'))
-    .map((f) => f.replace('.conf', ''));
+    .filter(f => f.endsWith('.conf') && !f.endsWith('.backup'))
+    .map(f => f.replace('.conf', ''));
 }
