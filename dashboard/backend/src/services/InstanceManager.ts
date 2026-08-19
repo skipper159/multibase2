@@ -26,6 +26,11 @@ import {
 } from '../utils/envParser';
 import { logger } from '../utils/logger';
 import { runDockerCommand } from '../utils/dockerCommand';
+import {
+  authForceRecreateArgs,
+  authProviderEnvironmentKeys,
+  ensureAuthProviderComposeOverride,
+} from '../utils/authCompose';
 import DockerManager from './DockerManager';
 import { loadImageMatrix } from './ImageRegistryService';
 import { RedisCache } from './RedisCache';
@@ -1623,6 +1628,10 @@ ${sslBlock}
       JWT_EXPIRY: '3600',
       DISABLE_SIGNUP: 'false',
       API_EXTERNAL_URL_FINAL: apiExternalUrl,
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: 'false',
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: '',
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: '',
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: '',
 
       // Email (can be configured later)
       SMTP_ADMIN_EMAIL: 'admin@example.com',
@@ -2167,22 +2176,23 @@ ${sslBlock}
     // Merge updates
     const newConfig = { ...currentConfig, ...configUpdates };
 
+    // Existing projects may predate OAuth provider passthrough in the generated
+    // compose file. Keep provider values in an additive override so custom
+    // compose changes remain untouched and Docker can actually receive them.
+    const providerKeys = authProviderEnvironmentKeys(configUpdates);
+    const authService = ensureAuthProviderComposeOverride(projectPath, providerKeys);
+
     // Write back to file
     writeEnvFile(envPath, newConfig);
 
-    // Restart relevant services to apply changes
+    // A container restart preserves its old environment. Recreate only Auth so
+    // changed provider, URL and SMTP values are loaded without touching peers.
     try {
-      try {
-        await this.dockerManager.restartService(name, 'auth');
-        logger.info(`Restarted auth service for ${name}`);
-      } catch (e) {
-        // Fallback or ignore if auth service is named uniquely, try gotrue
-        await this.dockerManager.restartService(name, 'gotrue');
-        logger.info(`Restarted gotrue service for ${name}`);
-      }
+      await runDockerCommand(authForceRecreateArgs(authService), { cwd: projectPath });
+      logger.info(`Recreated ${authService} service for ${name}`);
     } catch (error) {
       logger.warn(
-        `Could not restart auth service for ${name}. Changes might not apply immediately. Error: ${error}`
+        `Could not recreate auth service for ${name}. Changes might not apply immediately. Error: ${error}`
       );
     }
   }
