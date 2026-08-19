@@ -1,3 +1,30 @@
+# Multibase 3.1.14
+
+Release date: 2026-08-19
+
+## Landing page and project positioning
+
+- 🧭 Reworked the public landing page around Multibase as an open-source project rather than a commercial company or SaaS product.
+- 🐳 Removed the generic “Open Source · Docker-Native · Self-Hosted” badge and its animated status dot.
+- 📝 Replaced promotional hero copy with a direct description of running multiple Supabase projects on infrastructure you control.
+- 🧩 Kept the complete feature overview and interactive dashboard tour while making the descriptions more precise and less promotional.
+- 📊 Renamed the comparison section to “How Multibase compares” and replaced misleading claims such as “Unlimited” with resource-aware wording.
+- 🔐 Reframed the security section around concrete controls instead of broad “enterprise-grade” claims.
+- 🤖 Presented the AI assistant as an optional, provider-configured feature and clarified that provider usage and costs remain the user’s responsibility.
+- 🧰 Reworded the extension marketplace and deployment sections to describe the actual workflow without artificial urgency or exaggerated promises.
+
+## Project and licensing information
+
+- 🏷️ Updated the footer from “Multibase Inc.” to “Multibase contributors”.
+- ⚖️ Added the MIT License reference to the footer.
+- 🗂️ Renamed the footer’s “Company” area to “Project” and kept GitHub, Issues, Discussions, and Feature Requests as the relevant links.
+
+## Versioning and validation
+
+- 📦 Updated root, frontend, backend, and lockfile versions to `3.1.14`.
+- ⚙️ Updated the installer’s displayed main-branch version to `3.1.14`.
+- ✅ Frontend TypeScript check and production build completed successfully.
+
 # Multibase 3.1.13
 
 Release date: 2026-08-11

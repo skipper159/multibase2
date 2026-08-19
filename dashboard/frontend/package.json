@@ -1,6 +1,6 @@
 {
   "name": "multibase-dashboard-frontend",
-  "version": "3.1.13",
+  "version": "3.1.14",
   "description": "Frontend for Multibase Dashboard",
   "type": "module",
   "scripts": {

@@ -166,7 +166,7 @@ const TOUR_TABS = [
     id: 'marketplace',
     name: 'Marketplace',
     title: 'Extension Marketplace',
-    description: 'Supercharge any project with Postgres extensions — vector search, message queues, scheduled jobs, all installable in one click.',
+    description: 'Install and manage supported Postgres extensions for vector search, message queues, scheduled jobs, and more.',
     src: '/screenshots/marketplace_extensions.png',
     icon: Server,
     color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30'
@@ -183,7 +183,7 @@ const TOUR_TABS = [
   {
     id: 'ai-assistant',
     name: 'AI Assistant',
-    title: 'Your AI Database Engineer',
+    title: 'Optional AI Database Assistance',
     description: 'Chat with your databases using natural language, execute safe schema migrations, inspect tables, and automate operations.',
     src: '/screenshots/ai_assistant_docs.png',
     icon: Bot,
@@ -385,26 +385,17 @@ const LandingPage = () => {
           <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-background to-transparent pointer-events-none" />
 
           <div className="container mx-auto px-4 sm:px-6 pt-16 sm:pt-20 pb-20 sm:pb-28 text-center relative z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-medium text-brand-400 mb-8 animate-fade-in-up">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
-              </span>
-              Open Source · Docker-Native · Self-Hosted
-            </div>
-
             <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight mb-6 pb-2 animate-fade-in-up [animation-delay:100ms]">
               <span className="bg-clip-text text-transparent bg-gradient-to-br from-white to-white/60">
-                Self-host Supabase.
+                Run multiple Supabase projects
               </span>
               <br />
-              <span className="text-brand-500">Keep the cloud experience.</span>
+              <span className="text-brand-500">on your own infrastructure.</span>
             </h1>
 
             <p className="text-lg md:text-xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-fade-in-up [animation-delay:200ms]">
-              Multibase runs multiple Supabase projects on your own server — using shared Docker
-              infrastructure so every instance gets full Postgres, Auth, Storage, and Realtime
-              without the bloat of a full single-stack per project.
+              Multibase provides a central dashboard for provisioning, monitoring, backing up, and
+              administering isolated Supabase projects running on Docker.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up [animation-delay:300ms]">
@@ -420,7 +411,7 @@ const LandingPage = () => {
                   className="h-12 px-8 text-base bg-brand-500 hover:bg-brand-600 text-white"
                   onClick={() => openAuth('login')}
                 >
-                  Get Started — It's Free
+                  Get started
                 </SupabaseButton>
               )}
               <SupabaseButton
@@ -451,10 +442,10 @@ const LandingPage = () => {
             {/* Header/Intro */}
             <div className="text-center mb-8">
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
-                Experience Multibase in action
+                Explore the dashboard
               </h2>
               <p className="text-muted-foreground text-sm max-w-xl mx-auto mt-2">
-                Explore the different areas of the dashboard or watch the guided walkthrough.
+                Browse the main areas of Multibase and see how project administration works.
               </p>
             </div>
 
@@ -619,7 +610,7 @@ const LandingPage = () => {
                 { value: '51+', label: 'Extensions' },
                 { value: '9', label: 'Backup Destinations' },
                 { value: '30+', label: 'AI Agent Tools' },
-                { value: '100%', label: 'Open Source' },
+                { value: 'MIT', label: 'Licensed' },
               ].map(({ value, label }) => (
                 <div key={label} className="flex flex-col items-center">
                   <div className="text-2xl sm:text-3xl font-bold text-brand-400">{value}</div>
@@ -634,12 +625,12 @@ const LandingPage = () => {
         <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20 border-t border-white/5 bg-background/50 backdrop-blur-sm">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold mb-4">
-              Full Supabase stack — shared, not duplicated
+              Supabase projects on shared infrastructure
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
               Each project gets its own isolated Postgres database and API surface, while core
-              services are shared across all instances — giving you cloud-grade capabilities at a
-              fraction of the resource cost.
+              services are shared across instances while project data and credentials remain
+              isolated.
             </p>
           </div>
 
@@ -657,7 +648,7 @@ const LandingPage = () => {
             <FeatureCard
               icon={Activity}
               title="Realtime"
-              description="A shared Realtime server streams Postgres changes, broadcast, and presence channels across all your projects — no extra setup required."
+              description="A shared Realtime server streams Postgres changes, broadcast, and presence channels across your projects."
             />
             <FeatureCard
               icon={Archive}
@@ -667,17 +658,17 @@ const LandingPage = () => {
             <FeatureCard
               icon={Server}
               title="Shared Infrastructure"
-              description="One Kong gateway, one storage service, one Realtime node — shared across all projects. Run 5+ instances on hardware that would barely support one full single-stack deployment."
+              description="Gateway, storage, and Realtime services can be shared across projects instead of being duplicated for every deployment."
             />
             <FeatureCard
               icon={Key}
               title="API Keys & Access Control"
-              description="Scoped API keys, role-based access (admin / user / viewer), and per-organisation permissions keep your team in full control."
+              description="Scoped API keys, role-based access (admin / user / viewer), and per-organisation permissions define who can access each project."
             />
             <FeatureCard
               icon={LayoutDashboard}
-              title="Single Pane of Glass"
-              description="Monitor health, uptime, and resource usage of every Supabase instance from one unified dashboard — no more jumping between terminals or Studio tabs."
+              title="Central dashboard"
+              description="Monitor health, uptime, and resource usage of every Supabase instance from one dashboard."
             />
             <FeatureCard
               icon={Layers}
@@ -687,7 +678,7 @@ const LandingPage = () => {
             <FeatureCard
               icon={Zap}
               title="Supabase Studio"
-              description="Full Supabase Studio access for every instance — table editor, SQL editor, API explorer, and logs, all reachable from the dashboard."
+              description="Supabase Studio access for every instance, including the table editor, SQL editor, API explorer, and logs."
             />
           </div>
         </div>
@@ -695,10 +686,10 @@ const LandingPage = () => {
         {/* How It Works */}
         <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20 border-t border-white/5">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold mb-4">Up and running in minutes</h2>
+            <h2 className="text-3xl font-bold mb-4">How Multibase works</h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              No complex Kubernetes manifests, no vendor lock-in. Just Docker, a server, and five
-              minutes.
+              Multibase uses Docker Compose and standard Supabase services. You provide the server,
+              and the project manages the generated infrastructure and configuration.
             </p>
           </div>
           <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
@@ -721,7 +712,7 @@ const LandingPage = () => {
                   step: '3',
                   icon: Zap,
                   title: 'Connect & build',
-                  desc: "Use the standard Supabase client SDK — exactly like the cloud version. Your code doesn't know the difference.",
+                  desc: 'Use the standard Supabase client SDK and connect your application to the instance URL and API credentials.',
                 },
               ] as const
             ).map(({ step, icon: Icon, title, desc }) => (
@@ -745,9 +736,9 @@ const LandingPage = () => {
         <div className="border-t border-white/5 bg-white/[0.015]">
           <div className="container mx-auto px-4 sm:px-6 py-16 sm:py-20">
             <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold mb-4">Why Multibase?</h2>
+              <h2 className="text-3xl font-bold mb-4">How Multibase compares</h2>
               <p className="text-muted-foreground max-w-xl mx-auto">
-                Compare what you get — and what you save — versus the alternatives.
+                A practical comparison of deployment models and administration options.
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -766,7 +757,7 @@ const LandingPage = () => {
                   {(
                     [
                       ['Cost', 'Own server', '$25+/mo per project', 'Own server'],
-                      ['Projects per server', 'Unlimited', 'Per billing plan', '1'],
+                      ['Projects per server', 'Depends on server resources', 'Per billing plan', '1'],
                       ['RAM per project', '~200 MB (shared)', 'Cloud-managed', '4–8 GB'],
                       ['Backups', '✅ Multi-destination', '✅ Cloud-managed', '❌ Manual'],
                       ['Monitoring & Alerts', '✅ Built-in', '✅ Built-in', '❌ Manual'],
@@ -779,7 +770,7 @@ const LandingPage = () => {
                       ],
                       ['AI Agent', '✅ Multi-provider', '❌', '❌'],
                       ['Extension Marketplace', '✅ 51 extensions', '✅ Limited', '❌'],
-                      ['Data sovereignty', '✅ 100%', '❌ Cloud-hosted', '✅ 100%'],
+                      ['Data location', 'Your server', 'Cloud-hosted', 'Your server'],
                     ] as const
                   ).map(([feature, multibase, cloud, selfhost]) => (
                     <tr key={feature} className="hover:bg-white/[0.02] transition-colors">
@@ -804,12 +795,12 @@ const LandingPage = () => {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 border border-brand-500/20 text-xs font-medium text-brand-400 mb-6">
                 <Lock className="w-3 h-3" />
-                Security-first
+                Security features
               </div>
-              <h2 className="text-2xl font-bold mb-4">Enterprise-grade security, out of the box</h2>
+              <h2 className="text-2xl font-bold mb-4">Security controls for your deployment</h2>
               <p className="text-muted-foreground mb-8 leading-relaxed">
-                Every instance is hardened by default — no extra configuration required to be
-                production-ready.
+                The dashboard and deployment provide several controls for protecting access,
+                credentials, and project data.
               </p>
               <ul className="space-y-3">
                 {[
@@ -833,18 +824,18 @@ const LandingPage = () => {
             <div>
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs font-medium text-violet-400 mb-6">
                 <Bot className="w-3 h-3" />
-                AI-powered
+                Optional AI assistant
               </div>
-              <h2 className="text-2xl font-bold mb-4">Your AI database assistant, built in</h2>
+              <h2 className="text-2xl font-bold mb-4">AI assistance for project administration</h2>
               <p className="text-muted-foreground mb-8 leading-relaxed">
-                Chat with your Supabase instances in natural language — powered by the AI provider
-                of your choice.
+                Configure an AI provider in your profile to inspect projects, query databases, and
+                assist with selected administrative tasks.
               </p>
               <ul className="space-y-3">
                 {[
                   '30+ tools: query, migrate, manage, monitor',
                   'Supports OpenAI, Anthropic, Gemini, OpenRouter',
-                  'Per-user API key — your cost, your control',
+                  'Per-user API key — provider usage and costs remain your responsibility',
                   'Persistent chat history per session',
                   'Execute SQL, inspect schemas, manage backups',
                   'Context-aware across all your instances',
@@ -868,11 +859,10 @@ const LandingPage = () => {
                   <Puzzle className="w-3 h-3" />
                   Extension Marketplace
                 </div>
-                <h2 className="text-3xl font-bold mb-4">51 extensions, one click away</h2>
+                <h2 className="text-3xl font-bold mb-4">Postgres extensions from the dashboard</h2>
                 <p className="text-muted-foreground mb-6 max-w-lg leading-relaxed">
-                  Supercharge any project with Postgres extensions — vector search, message queues,
-                  scheduled jobs, full-text search, and more — all installable directly from the
-                  dashboard.
+                  Install and manage supported Postgres extensions, including vector search, queues,
+                  scheduled jobs, GIS, and HTTP extensions.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -923,14 +913,11 @@ const LandingPage = () => {
           <div className="container mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
               <span className="bg-clip-text text-transparent bg-gradient-to-br from-white to-white/60">
-                Ready to take back control
+                Run Multibase on your own infrastructure.
               </span>
-              <br />
-              <span className="text-brand-500">of your infrastructure?</span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-xl mx-auto mb-10">
-              Deploy Multibase on any VPS, cloud VM, or bare-metal server. No credit card, no vendor
-              lock-in — just Postgres and Docker.
+              Use the repository and installation guide to deploy Multibase on a server you control.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               {user ? (
@@ -945,7 +932,7 @@ const LandingPage = () => {
                   className="h-12 px-10 text-base bg-brand-500 hover:bg-brand-600 text-white"
                   onClick={() => openAuth('register')}
                 >
-                  Start for free
+                  Get started
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </SupabaseButton>
               )}
@@ -992,7 +979,7 @@ const LandingPage = () => {
               Multibase
             </div>
             <p className="text-sm text-muted-foreground">
-              The open source backend for your next application.
+              An open-source dashboard for managing self-hosted Supabase projects.
             </p>
           </div>
           <div>
@@ -1061,7 +1048,7 @@ const LandingPage = () => {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-4 text-sm">Company</h4>
+            <h4 className="font-semibold mb-4 text-sm">Project</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a
@@ -1104,7 +1091,7 @@ const LandingPage = () => {
           </div>
         </div>
         <div className="container mx-auto px-4 sm:px-6 border-t border-white/5 pt-8 text-center text-sm text-muted-foreground">
-          &copy; 2026 Multibase Inc. All rights reserved.
+          &copy; 2026 Multibase contributors. Released under the MIT License.
         </div>
       </footer>
 
