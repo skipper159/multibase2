@@ -59,6 +59,14 @@ export function createUpdateRoutes(updateService: UpdateService, io: SocketIOSer
   });
 
   /**
+   * GET /api/updates/multibase/log
+   * Returns the latest persisted Multibase web-update log.
+   */
+  router.get('/multibase/log', (_req: Request, res: Response) => {
+    return res.json({ log: updateService.getMultibaseUpdateLog() });
+  });
+
+  /**
    * POST /api/updates/check
    * Bypasses the 5-minute cache and triggers a fresh check.
    */

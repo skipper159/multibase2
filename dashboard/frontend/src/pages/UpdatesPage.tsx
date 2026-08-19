@@ -25,6 +25,7 @@ import {
   ChevronUp,
   AlertCircle,
   Tag,
+  FileText,
 } from 'lucide-react';
 
 // ──────────────────────────────────────────────
@@ -209,6 +210,7 @@ export default function UpdatesPage() {
     requiresText?: string;
   } | null>(null);
   const [progressOpen, setProgressOpen] = useState(false);
+  const [persistedLogOpen, setPersistedLogOpen] = useState(false);
 
   const openReleasePicker = useCallback(() => {
     if (pickerBtnRef.current) {
@@ -468,6 +470,44 @@ export default function UpdatesPage() {
               </div>
             </div>
           </div>
+
+          {status?.multibaseUpdateLog && (
+            <div className="mt-4 rounded-lg border border-white/10 bg-black/20 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setPersistedLogOpen(value => !value)}
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/5 transition-colors"
+              >
+                <span className="flex items-center gap-2 text-sm font-medium">
+                  <FileText className="w-4 h-4 text-brand-400" />
+                  Last web update log
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${
+                    status.multibaseUpdateLog.status === 'success'
+                      ? 'bg-brand-500/15 text-brand-400'
+                      : status.multibaseUpdateLog.status === 'failed'
+                        ? 'bg-red-500/15 text-red-400'
+                        : 'bg-yellow-500/15 text-yellow-400'
+                  }`}>
+                    {status.multibaseUpdateLog.status}
+                  </span>
+                </span>
+                {persistedLogOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+              {persistedLogOpen && (
+                <div className="border-t border-white/10 p-4">
+                  <div className="mb-3 text-xs text-muted-foreground">
+                    Started {new Date(status.multibaseUpdateLog.startedAt).toLocaleString()}
+                    {status.multibaseUpdateLog.finishedAt && ` · Finished ${new Date(status.multibaseUpdateLog.finishedAt).toLocaleString()}`}
+                    {status.multibaseUpdateLog.targetVersion && ` · Target v${status.multibaseUpdateLog.targetVersion}`}
+                  </div>
+                  <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-lg bg-black/50 p-3 font-mono text-xs leading-relaxed text-green-300/90">
+                    {status.multibaseUpdateLog.entries.map(entry => `[${new Date(entry.timestamp).toLocaleTimeString()}] ${entry.line}`).join('\n')}
+                    {status.multibaseUpdateLog.error && `\n\nERROR: ${status.multibaseUpdateLog.error}`}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Changelog – updates when a version is selected in the picker */}
           {(() => {

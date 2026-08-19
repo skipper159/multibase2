@@ -1449,6 +1449,15 @@ export interface UpdateStatus {
     expiresAt: string | null;
     approvedBy: { id: string; username: string; email: string } | null;
   };
+  multibaseUpdateLog: {
+    id: string;
+    targetVersion: string | null;
+    startedAt: string;
+    finishedAt: string | null;
+    status: 'running' | 'success' | 'failed';
+    error: string | null;
+    entries: Array<{ timestamp: string; line: string }>;
+  } | null;
 }
 
 export const updatesApi = {

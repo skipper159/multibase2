@@ -107,6 +107,17 @@ export interface UpdateStatus {
     cacheBypassed: boolean;
   };
   securityGate: SecurityGateStatus;
+  multibaseUpdateLog: MultibaseUpdateLog | null;
+}
+
+export interface MultibaseUpdateLog {
+  id: string;
+  targetVersion: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  status: 'running' | 'success' | 'failed';
+  error: string | null;
+  entries: Array<{ timestamp: string; line: string }>;
 }
 
 export interface SecurityGateStatus {
@@ -159,6 +170,8 @@ export interface DockerUpdateOptions {
 
 export class UpdateService extends EventEmitter {
   private readonly dockerManager: DockerManager;
+  private activeMultibaseUpdateLog: MultibaseUpdateLog | null = null;
+  private readonly multibaseUpdateLogPath: string;
   private readonly rootDir: string;
   private readonly projectsPath: string;
   private readonly frontendServe: 'local' | 'split';
@@ -281,10 +294,71 @@ export class UpdateService extends EventEmitter {
   constructor(dockerManager: DockerManager, rootDir: string, projectsPath?: string) {
     super();
     this.dockerManager = dockerManager;
+    this.multibaseUpdateLogPath = path.join(rootDir, '.multibase-update-log.json');
     this.rootDir = rootDir;
     this.projectsPath = path.resolve(projectsPath ?? path.join(rootDir, 'projects'));
     const mode = process.env.FRONTEND_SERVE ?? 'local';
     this.frontendServe = mode === 'split' ? 'split' : 'local';
+  }
+
+  private readMultibaseUpdateLog(): MultibaseUpdateLog | null {
+    try {
+      if (!fs.existsSync(this.multibaseUpdateLogPath)) return null;
+      return JSON.parse(fs.readFileSync(this.multibaseUpdateLogPath, 'utf8')) as MultibaseUpdateLog;
+    } catch (error) {
+      logger.warn('Could not read persisted Multibase update log:', error);
+      return null;
+    }
+  }
+
+  private persistMultibaseUpdateLog(): void {
+    if (!this.activeMultibaseUpdateLog) return;
+    try {
+      fs.writeFileSync(
+        this.multibaseUpdateLogPath,
+        `${JSON.stringify(this.activeMultibaseUpdateLog, null, 2)}\n`,
+        { encoding: 'utf8', mode: 0o600 }
+      );
+    } catch (error) {
+      logger.warn('Could not persist Multibase update log:', error);
+    }
+  }
+
+  private startMultibaseUpdateLog(targetVersion: string | null): void {
+    this.activeMultibaseUpdateLog = {
+      id: `${Date.now()}`,
+      targetVersion,
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      status: 'running',
+      error: null,
+      entries: [],
+    };
+    this.persistMultibaseUpdateLog();
+  }
+
+  private appendMultibaseUpdateLog(line: string): void {
+    if (!this.activeMultibaseUpdateLog) return;
+    this.activeMultibaseUpdateLog.entries.push({ timestamp: new Date().toISOString(), line });
+    this.persistMultibaseUpdateLog();
+  }
+
+  private finishMultibaseUpdateLog(status: 'success' | 'failed', error: string | null = null): void {
+    if (!this.activeMultibaseUpdateLog) return;
+    this.activeMultibaseUpdateLog.status = status;
+    this.activeMultibaseUpdateLog.error = error;
+    this.activeMultibaseUpdateLog.finishedAt = new Date().toISOString();
+    this.persistMultibaseUpdateLog();
+    this.activeMultibaseUpdateLog = null;
+  }
+
+  getMultibaseUpdateLog(): MultibaseUpdateLog | null {
+    return this.activeMultibaseUpdateLog ?? this.readMultibaseUpdateLog();
+  }
+
+  private emitMultibaseLog(line: string): void {
+    this.appendMultibaseUpdateLog(line);
+    this.emit('update:log', { line });
   }
 
   // ──────────────────────────────────────────────
@@ -823,6 +897,7 @@ export class UpdateService extends EventEmitter {
         cacheBypassed: forceRefresh,
       },
       securityGate,
+      multibaseUpdateLog: this.getMultibaseUpdateLog(),
     };
 
     this.cachedStatus = status;
@@ -837,6 +912,8 @@ export class UpdateService extends EventEmitter {
   async performMultibaseUpdate(targetVersion?: string): Promise<void> {
     if (this._isInProgress) throw new Error('An update is already in progress');
     this._isInProgress = true;
+
+    let originalCommit: string | null = null;
 
     const vps1Host = process.env.VPS1_HOST;
     const vps1User = process.env.VPS1_USER;
@@ -870,17 +947,22 @@ export class UpdateService extends EventEmitter {
               'restart',
             ]
           : [gitLabel, 'backend install', 'database migrations', 'backend build', 'restart'];
+    this.startMultibaseUpdateLog(targetVersion ?? null);
     this.emit('update:start', { type: 'multibase', steps, targetVersion: targetVersion ?? null });
 
     const gitBranch = process.env.GIT_UPDATE_BRANCH ?? 'main';
 
     try {
+      const head = await this.runCommand('git', ['rev-parse', 'HEAD'], this.rootDir);
+      originalCommit = head.stdout.trim() || null;
+      if (!originalCommit) throw new Error('Could not determine the current repository commit');
+
       // Step 0: git fetch + reset to either a specific tag or the branch tip
       this.emitStep(gitLabel, 0, steps.length);
       if (targetVersion) {
         // Normalise: accept both "3.1.9" and "v3.1.9"
         const tag = targetVersion.startsWith('v') ? targetVersion : `v${targetVersion}`;
-        this.emit('update:log', { line: `Switching to release ${tag}...` });
+        this.emitMultibaseLog(`Switching to release ${tag}...`);
         await this.runCommand('git', ['fetch', '--tags', 'origin'], this.rootDir);
         await this.runCommand('git', ['reset', '--hard', tag], this.rootDir);
       } else {
@@ -893,7 +975,7 @@ export class UpdateService extends EventEmitter {
       // --include=dev: tsc braucht @types/* zum Bauen (wird nach dem Build entfernt)
       // --ignore-scripts: verhindert husky-Fehler aus dem Root-workspace prepare-Script
       this.emitStep('backend install', 1, steps.length);
-      this.emit('update:log', { line: 'Installing workspace dependencies...' });
+      this.emitMultibaseLog('Installing workspace dependencies...');
       await this.runCommand(
         'npm',
         ['install', '--prefer-offline', '--include=dev', '--ignore-scripts'],
@@ -908,14 +990,14 @@ export class UpdateService extends EventEmitter {
       // Step 2: apply all pending Prisma migrations before compiling the backend
       const migrationStepIdx = steps.indexOf('database migrations');
       this.emitStep('database migrations', migrationStepIdx, steps.length);
-      this.emit('update:log', { line: 'Applying database migrations...' });
+      this.emitMultibaseLog('Applying database migrations...');
       await this.runCommand('npx', ['prisma', 'migrate', 'deploy'], backendDir);
       this.emitStepDone('database migrations', migrationStepIdx);
 
       // Step 3: Backend kompilieren (TypeScript -> JavaScript)
       const backendBuildStepIdx = steps.indexOf('backend build');
       this.emitStep('backend build', backendBuildStepIdx, steps.length);
-      this.emit('update:log', { line: 'Building backend...' });
+      this.emitMultibaseLog('Building backend...');
       await this.runCommand('npm', ['run', 'build'], backendDir);
       this.emitStepDone('backend build', backendBuildStepIdx);
 
@@ -925,7 +1007,7 @@ export class UpdateService extends EventEmitter {
         // frontend build step (both local and split with VPS1 vars)
         const buildStepIdx = steps.indexOf('frontend build');
         this.emitStep('frontend build', buildStepIdx, steps.length);
-        this.emit('update:log', { line: 'Building frontend...' });
+        this.emitMultibaseLog('Building frontend...');
         const buildEnv: Record<string, string> = {};
         if (process.env.BACKEND_URL) buildEnv['VITE_API_URL'] = process.env.BACKEND_URL;
         await this.runCommand('npm', ['run', 'build'], frontendDir, false, buildEnv);
@@ -935,9 +1017,7 @@ export class UpdateService extends EventEmitter {
           // split mode: rsync dist/ to VPS1
           const deployStepIdx = steps.indexOf('frontend deploy');
           this.emitStep('frontend deploy', deployStepIdx, steps.length);
-          this.emit('update:log', {
-            line: `Deploying frontend to ${vps1User}@${vps1Host}:${vps1Path} ...`,
-          });
+          this.emitMultibaseLog(`Deploying frontend to ${vps1User}@${vps1Host}:${vps1Path} ...`);
           const distDir = path.join(frontendDir, 'dist') + '/';
           await this.runCommand(
             'rsync',
@@ -951,25 +1031,36 @@ export class UpdateService extends EventEmitter {
             ],
             this.rootDir
           );
-          this.emit('update:log', { line: '✓ Frontend deployed to VPS1' });
+          this.emitMultibaseLog('✓ Frontend deployed to VPS1');
           this.emitStepDone('frontend deploy', deployStepIdx);
         }
       } else {
-        this.emit('update:log', {
-          line: 'Skipping frontend (FRONTEND_SERVE=split, no VPS1 vars set — deploy via CI).',
-        });
+        this.emitMultibaseLog('Skipping frontend (FRONTEND_SERVE=split, no VPS1 vars set — deploy via CI).');
       }
 
       // Last step: pm2 restart (detached so the process can restart itself)
       const restartIdx = steps.length - 1;
       this.emitStep('restart', restartIdx, steps.length);
-      this.emit('update:log', { line: 'Restarting via PM2 — connection will briefly drop...' });
+      this.emitMultibaseLog('Restarting via PM2 — connection will briefly drop...');
       await this.runCommand('pm2', ['restart', 'all'], this.rootDir, true);
       this.emitStepDone('restart', restartIdx);
 
+      this.finishMultibaseUpdateLog('success');
       this.emit('update:complete', { type: 'multibase' });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      if (originalCommit) {
+        this.emitMultibaseLog('[rollback] Restoring the previous repository version...');
+        try {
+          await this.runCommand('git', ['reset', '--hard', originalCommit], this.rootDir);
+          this.emitMultibaseLog(`[rollback] Repository restored to ${originalCommit.slice(0, 8)}.`);
+        } catch (rollbackError: unknown) {
+          const rollbackMessage = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+          logger.error('Failed to restore the previous repository version:', rollbackError);
+          this.emitMultibaseLog(`[rollback] Failed: ${rollbackMessage}`);
+        }
+      }
+      this.finishMultibaseUpdateLog('failed', message);
       this.emit('update:error', { type: 'multibase', error: message });
       throw error;
     } finally {
@@ -2116,9 +2207,11 @@ export class UpdateService extends EventEmitter {
     cwd: string,
     detached = false,
     envOverrides: Record<string, string> = {}
-  ): Promise<void> {
+  ): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
       const childEnv = { ...process.env, ...envOverrides };
+      let stdout = '';
+      let stderr = '';
       const child = spawn(cmd, args, {
         cwd,
         detached,
@@ -2128,30 +2221,38 @@ export class UpdateService extends EventEmitter {
       });
 
       child.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString();
         const lines = data
           .toString()
           .split('\n')
           .filter(l => l.trim());
-        lines.forEach(line => this.emit('update:log', { line }));
+        lines.forEach(line => {
+          this.appendMultibaseUpdateLog(line);
+          this.emit('update:log', { line });
+        });
       });
 
       child.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
         const lines = data
           .toString()
           .split('\n')
           .filter(l => l.trim());
-        lines.forEach(line => this.emit('update:log', { line }));
+        lines.forEach(line => {
+          this.appendMultibaseUpdateLog(line);
+          this.emit('update:log', { line });
+        });
       });
 
       if (detached) {
         child.unref();
-        resolve();
+        resolve({ stdout, stderr });
         return;
       }
 
       child.on('close', code => {
         if (code === 0) {
-          resolve();
+          resolve({ stdout, stderr });
         } else {
           reject(new Error(`"${cmd} ${args.join(' ')}" exited with code ${code}`));
         }

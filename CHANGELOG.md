@@ -1,3 +1,25 @@
+# Multibase 3.1.15
+
+Release date: 2026-08-19
+
+## Web update reliability
+
+- 🔄 Capture the currently running repository commit before starting a web update.
+- ↩️ Automatically restore the previous commit when dependency installation, migrations, builds, deployment, or another update step fails.
+- 🧭 Prevent the dashboard from reporting the target release as installed when the update did not complete successfully.
+- 📝 Add rollback progress and rollback failures to the live update log so operators can verify the recovery action.
+- 🔁 Keep failed updates retryable from the previous known repository version.
+- 🗃️ Persist the latest web-update run on the server, including command output, timestamps, target version, final status, and errors.
+- 🖥️ Display the persisted update log in the Updates page so failed runs remain diagnosable after a browser refresh or backend restart.
+- 🔐 Store the persisted update log with restricted file permissions.
+
+## Versioning and validation
+
+- 📦 Updated root, frontend, backend, and lockfile versions to `3.1.15`.
+- ⚙️ Updated the installer’s displayed main-branch version to `3.1.15`.
+- ✅ Backend TypeScript build completed successfully.
+- ⚠️ Full backend tests could not start in the local sandbox because Vitest was denied access while loading its configuration; this is an environment permission issue, not a test assertion failure.
+
 # Multibase 3.1.14
 
 Release date: 2026-08-19

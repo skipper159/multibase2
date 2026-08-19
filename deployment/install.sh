@@ -18,7 +18,7 @@ INSTALL_USER="multibase"
 REPO_URL="https://github.com/skipper159/multibase2.git"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 case "${REPO_BRANCH}" in
-  "main"|"Feature_Roadmap") SCRIPT_VERSION="3.1.14" ;;
+  "main"|"Feature_Roadmap") SCRIPT_VERSION="3.1.15" ;;
   "cloud-version")   SCRIPT_VERSION="2.0.0" ;;
   *)                 SCRIPT_VERSION="1.0.0" ;;
 esac
